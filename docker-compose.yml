@@ -1,0 +1,65 @@
+services:
+  db:
+    image: postgres:15
+    container_name: labrobot_db
+    environment:
+      POSTGRES_USER: robot_user
+      POSTGRES_PASSWORD: robot_password
+      POSTGRES_DB: labrobot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: labrobot_backend
+    environment:
+      - DATABASE_URL=postgresql://robot_user:robot_password@db:5432/labrobot
+      - SECRET_KEY=your_super_secret_key_change_in_production
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: labrobot_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  hardware:
+    build:
+      context: ./hardware
+      dockerfile: Dockerfile
+    container_name: labrobot_hardware
+    environment:
+      - BACKEND_URL=http://backend:8000/api/v1
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  ros_bridge:
+    build:
+      context: ./ros2_ws
+      dockerfile: Dockerfile
+    container_name: labrobot_ros_bridge
+    environment:
+      - BACKEND_URL=ws://backend:8000/ws/bridge
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
