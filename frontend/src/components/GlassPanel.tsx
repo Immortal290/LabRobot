@@ -6,17 +6,19 @@ interface GlassPanelProps {
   className?: string;
   style?: React.CSSProperties;
   animate?: boolean;
+  onClick?: () => void;
 }
 
 export const GlassPanel: React.FC<GlassPanelProps> = ({ 
   children, 
   className = '', 
   style,
-  animate = true 
+  animate = true,
+  onClick
 }) => {
   if (!animate) {
     return (
-      <div className={`glass-panel ${className}`} style={style}>
+      <div className={`glass-panel ${className}`} style={style} onClick={onClick}>
         {children}
       </div>
     );
@@ -29,6 +31,7 @@ export const GlassPanel: React.FC<GlassPanelProps> = ({
       transition={{ duration: 0.5, ease: "easeOut" }}
       className={`glass-panel ${className}`}
       style={style}
+      onClick={onClick}
     >
       {children}
     </motion.div>

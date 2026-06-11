@@ -44,6 +44,11 @@ with SessionLocal() as db:
     if db.query(models.Rack).count() == 0:
         db.add_all([models.Rack(), models.Rack(), models.Rack(), models.Rack()])
         db.commit()
+        
+    # Seed SystemConfig if none exist
+    if db.query(models.SystemConfig).count() == 0:
+        db.add(models.SystemConfig())
+        db.commit()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

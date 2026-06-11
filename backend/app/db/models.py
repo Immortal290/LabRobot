@@ -70,3 +70,14 @@ class NavigationLog(Base):
     obstacles_encountered = Column(Integer, default=0)
     status = Column(String) # success, failed
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+class SystemConfig(Base):
+    __tablename__ = "system_config"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    max_speed = Column(Float, default=1.0)
+    safe_mode = Column(Boolean, default=True)
+    maintenance_mode = Column(Boolean, default=False)
+    theme = Column(String, default="dark")
+    telemetry_frequency = Column(Integer, default=1000) # milliseconds
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

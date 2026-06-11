@@ -38,6 +38,20 @@ export const inventoryApi = {
       method: 'POST',
       body: JSON.stringify({ item_id: itemId, destination }),
     }),
+  createItem: (item: any) => 
+    fetchWithAuth('/inventory', {
+      method: 'POST',
+      body: JSON.stringify(item),
+    }),
+  updateItem: (itemId: number, item: any) => 
+    fetchWithAuth(`/inventory/${itemId}`, {
+      method: 'PUT',
+      body: JSON.stringify(item),
+    }),
+  deleteItem: (itemId: number) => 
+    fetchWithAuth(`/inventory/${itemId}`, {
+      method: 'DELETE',
+    }),
 };
 
 export const rackApi = {
@@ -50,5 +64,13 @@ export const rackApi = {
   logTransaction: (rackId: number, itemId: number, action: 'add' | 'remove', quantity: number) => fetchWithAuth(`/racks/${rackId}/transaction`, {
     method: 'POST',
     body: JSON.stringify({ item_id: itemId, action, quantity }),
+  }),
+};
+
+export const configApi = {
+  getConfig: () => fetchWithAuth('/config'),
+  updateConfig: (config: any) => fetchWithAuth('/config', {
+    method: 'PUT',
+    body: JSON.stringify(config),
   }),
 };

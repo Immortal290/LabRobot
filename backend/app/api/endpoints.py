@@ -249,3 +249,47 @@ def get_analytics(db: Session = Depends(database.get_db), _=Depends(dependencies
         total_users=db.query(models.User).count(),
         total_logs=db.query(models.Log).count(),
     )
+
+# ─── SYSTEM CONFIG ───────────────────────────────────────────────────────────
+
+@router.get("/config", response_model=schemas.SystemConfig)
+def get_system_config(db: Session = Depends(database.get_db), _=Depends(dependencies.get_current_active_user)):
+    config = db.query(models.SystemConfig).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="System configuration not found")
+    return config
+
+@router.put("/config", response_model=schemas.SystemConfig)
+def update_system_config(update: schemas.SystemConfigUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(dependencies.get_admin_user)):
+    config = db.query(models.SystemConfig).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="System configuration not found")
+    
+    for field, value in update.model_dump(exclude_none=True).items():
+        setattr(config, field, value)
+    
+    config.updated_at = datetime.utcnow()
+    create_log(db, "system", "System configuration updated", user_id=current_user.id)
+    db.commit()
+    db.refresh(config)
+    
+    # Broadcast to websocket clients will be triggered from main.py via dependency injection or simple import
+    from app.main import manager
+    import asyncio, json
+    
+    config_dict = schemas.SystemConfig.model_validate(config).model_dump()
+    # Convert datetime for JSON serialization
+    config_dict["updated_at"] = config_dict["updated_at"].isoformat()
+    
+    broadcast_task = manager.broadcast_to_ui(json.dumps({
+        "type": "config_update",
+        "config": config_dict
+    }))
+    
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(broadcast_task)
+    except RuntimeError:
+        pass # No event loop running (e.g. in test or sync context)
+
+    return config

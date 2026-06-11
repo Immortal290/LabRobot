@@ -119,3 +119,24 @@ class AnalyticsSummary(BaseModel):
     total_inventory_items: int
     total_users: int
     total_logs: int
+
+# SystemConfig Schemas
+class SystemConfigBase(BaseModel):
+    max_speed: float
+    safe_mode: bool
+    maintenance_mode: bool
+    theme: str
+    telemetry_frequency: int
+
+class SystemConfigUpdate(BaseModel):
+    max_speed: Optional[float] = None
+    safe_mode: Optional[bool] = None
+    maintenance_mode: Optional[bool] = None
+    theme: Optional[str] = None
+    telemetry_frequency: Optional[int] = None
+
+class SystemConfig(SystemConfigBase):
+    id: int
+    updated_at: datetime
+    class Config:
+        from_attributes = True
