@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './pages/Login';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { UserDashboard } from './pages/UserDashboard';
+import { QuickRequest } from './pages/QuickRequest';
 
 const ProtectedRoute = ({ children, allowedRoles }: { children: React.ReactNode, allowedRoles: string[] }) => {
   const { user } = useAuth();
@@ -17,6 +18,7 @@ const AppRoutes = () => {
   
   return (
     <Routes>
+      <Route path="/quick-request" element={<QuickRequest />} />
       <Route path="/login" element={user ? <Navigate to={user.role === 'Admin' ? '/admin' : '/user'} /> : <Login />} />
       <Route path="/admin" element={
         <ProtectedRoute allowedRoles={['Admin']}>

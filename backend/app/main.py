@@ -14,9 +14,20 @@ logger = logging.getLogger(__name__)
 # Create all tables on startup
 Base.metadata.create_all(bind=engine)
 
+# Run raw alter table queries to update schema if needed
+from sqlalchemy import text
+from app.db.database import SessionLocal
+with SessionLocal() as db:
+    try:
+        db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS pc_no VARCHAR;"))
+        db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS location VARCHAR;"))
+        db.commit()
+    except Exception as e:
+        logger.error(f"Migration error: {e}")
+        db.rollback()
+
 # Seed Initial Data
 from sqlalchemy.orm import Session
-from app.db.database import SessionLocal
 from app.db import models
 from app.core import security
 

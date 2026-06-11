@@ -4,12 +4,14 @@ import requests
 import json
 from datetime import datetime
 
-# Attempt to import gpiozero, fallback to mock if not on Raspberry Pi
+# Attempt to import gpiozero, fallback to mock if not on Raspberry Pi or no pin factory found
 try:
     from gpiozero import Button, OutputDevice
+    import gpiozero.devices
+    gpiozero.devices.Device.ensure_pin_factory()
     ON_PI = True
-except (ImportError, NotImplementedError):
-    print("Warning: gpiozero not found or not running on Raspberry Pi. Using mock GPIO.")
+except Exception:
+    print("Warning: gpiozero not found, no pin factory found, or not running on Raspberry Pi. Using mock GPIO.")
     ON_PI = False
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000/api/v1")

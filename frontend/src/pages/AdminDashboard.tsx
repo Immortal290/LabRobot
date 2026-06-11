@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GlassPanel } from '../components/GlassPanel';
-import { Battery, Cpu, Map as MapIcon, Package, LogOut, Navigation, Settings, Activity, Edit2, Trash2 } from 'lucide-react';
+import { Battery, Cpu, Map as MapIcon, Package, LogOut, Navigation, Settings, Activity, Edit2, Trash2, Smartphone, QrCode, Copy, Check, ExternalLink } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { configApi, inventoryApi } from '../services/api';
+import { configApi, inventoryApi, deliveriesApi, usersApi } from '../services/api';
+import QRCode from 'qrcode';
 
 export const AdminDashboard: React.FC = () => {
   const { logout, user } = useAuth();
@@ -21,6 +22,12 @@ export const AdminDashboard: React.FC = () => {
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [inventoryFormData, setInventoryFormData] = useState({ name: '', description: '', quantity: 1, rack_id: '' });
 
+  // Deliveries & Users State
+  const [deliveries, setDeliveries] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
+  const [copied, setCopied] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+
   const loadInventory = async () => {
     try {
       const data = await inventoryApi.getInventory();
@@ -30,9 +37,52 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const loadDeliveries = async () => {
+    try {
+      const data = await deliveriesApi.getDeliveries();
+      setDeliveries(data);
+    } catch (err) {
+      console.error('Failed to load deliveries', err);
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      const data = await usersApi.getUsers();
+      setUsers(data);
+    } catch (err) {
+      console.error('Failed to load users', err);
+    }
+  };
+
+  const handleUpdateDeliveryStatus = async (id: number, status: string) => {
+    try {
+      await deliveriesApi.updateDeliveryStatus(id, status);
+      loadDeliveries();
+    } catch (err) {
+      console.error('Failed to update status', err);
+      alert('Failed to update status.');
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'inventory') {
       loadInventory();
+    } else if (activeTab === 'mobile_portal') {
+      loadDeliveries();
+      loadUsers();
+      loadInventory();
+      const portalUrl = `${window.location.protocol}//${window.location.hostname}:3000/quick-request`;
+      QRCode.toDataURL(portalUrl, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#ffffff',
+          light: '#0a1122',
+        }
+      })
+      .then(url => setQrCodeUrl(url))
+      .catch(err => console.error('Failed to generate local QR Code:', err));
     }
   }, [activeTab]);
 
@@ -134,6 +184,17 @@ export const AdminDashboard: React.FC = () => {
             type: 'info' as const
           };
           setLogs(prev => [newLog, ...prev].slice(0, 15));
+        } else if (data.type === 'delivery_update') {
+          setDeliveries(prev => {
+            const index = prev.findIndex(d => d.id === data.delivery.id);
+            if (index > -1) {
+              const updated = [...prev];
+              updated[index] = data.delivery;
+              return updated;
+            } else {
+              return [data.delivery, ...prev];
+            }
+          });
         }
       } catch (err) {
         console.error('Failed to parse WebSocket message', err);
@@ -202,6 +263,14 @@ export const AdminDashboard: React.FC = () => {
           >
             <Package size={20} color={activeTab === 'inventory' ? 'var(--accent-cyan)' : 'var(--text-secondary)'} />
             <span>Inventory Management</span>
+          </button>
+          <button 
+            className="btn" 
+            style={{ background: activeTab === 'mobile_portal' ? 'rgba(37, 99, 235, 0.2)' : 'transparent', color: activeTab === 'mobile_portal' ? '#fff' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '16px', border: activeTab === 'mobile_portal' ? '1px solid var(--accent-blue)' : '1px solid transparent', boxShadow: activeTab === 'mobile_portal' ? '0 0 15px var(--accent-blue-glow)' : 'none' }}
+            onClick={() => setActiveTab('mobile_portal')}
+          >
+            <Smartphone size={20} color={activeTab === 'mobile_portal' ? 'var(--accent-cyan)' : 'var(--text-secondary)'} />
+            <span>Mobile Action Portal</span>
           </button>
           <button 
             className="btn" 
@@ -520,6 +589,195 @@ export const AdminDashboard: React.FC = () => {
                       <span>5000 ms (Eco)</span>
                     </div>
                   </GlassPanel>
+                </div>
+              </GlassPanel>
+            </motion.div>
+          )}
+
+          {activeTab === 'mobile_portal' && (
+            <motion.div key="mobile_portal" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.4 }}>
+              <div className="grid-cols-2" style={{ gap: '32px', marginBottom: '2rem' }}>
+                {/* QR Code Card */}
+                <GlassPanel style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '32px', textAlign: 'center' }}>
+                  <QrCode size={40} color="var(--accent-cyan)" style={{ marginBottom: '16px' }} />
+                  <h3 style={{ margin: '0 0 8px 0' }}>User Scan Code</h3>
+                  <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '24px', maxWidth: '300px' }}>
+                    Scan this QR code with any mobile device to open the quick-request portal.
+                  </p>
+                  
+                  <div style={{ background: '#0a1122', padding: '16px', borderRadius: '16px', border: '1px solid var(--glass-border)', display: 'inline-block', boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)', marginBottom: '24px' }}>
+                    {qrCodeUrl ? (
+                      <img 
+                        src={qrCodeUrl}
+                        alt="Portal QR Code"
+                        style={{ display: 'block', borderRadius: '8px', width: '200px', height: '200px' }}
+                      />
+                    ) : (
+                      <div style={{ width: '200px', height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)' }}>
+                        Generating Code...
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '8px', width: '100%', maxWidth: '340px' }}>
+                    <input 
+                      readOnly 
+                      type="text" 
+                      className="input-field" 
+                      value={`${window.location.protocol}//${window.location.hostname}:3000/quick-request`}
+                      style={{ fontSize: '0.85rem', padding: '10px 14px' }}
+                    />
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.protocol}//${window.location.hostname}:3000/quick-request`);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="btn" 
+                      style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)' }}
+                    >
+                      {copied ? <Check size={16} color="var(--accent-green)" /> : <Copy size={16} />}
+                    </button>
+                    <a 
+                      href="/quick-request" 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="btn" 
+                      style={{ padding: '10px 14px', background: 'rgba(6, 182, 212, 0.2)', border: '1px solid var(--accent-cyan)' }}
+                    >
+                      <ExternalLink size={16} color="var(--accent-cyan)" />
+                    </a>
+                  </div>
+                </GlassPanel>
+
+                {/* Portal Management Info */}
+                <GlassPanel style={{ padding: '32px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                  <Smartphone size={40} color="var(--accent-purple)" style={{ marginBottom: '16px' }} />
+                  <h3 style={{ margin: '0 0 12px 0' }}>Interactive Mobile Portal</h3>
+                  <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '16px' }}>
+                    The quick-request portal enables lab users and students to dispatch the LabRobot from their smartphones without needing to log in beforehand.
+                  </p>
+                  <ul style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px', margin: 0 }}>
+                    <li><strong>Direct Validation:</strong> User details are checked and registered automatically.</li>
+                    <li><strong>Live Telemetry:</strong> Mobile users can track the robot's real-time battery, CPU temperature, and active status.</li>
+                    <li><strong>Interactive Cabinets:</strong> Users can unlock their designated rack compartment directly from their phone when the robot arrives.</li>
+                  </ul>
+                </GlassPanel>
+              </div>
+
+              {/* Quick Requests Table */}
+              <GlassPanel style={{ minHeight: '400px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', borderBottom: '1px solid var(--glass-border)', paddingBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <Smartphone size={28} color="var(--accent-cyan)" />
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.5rem' }}>Quick Dispatch Log</h3>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Real-time inspection of mobile-submitted delivery requests.</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ overflowX: 'auto' }}>
+                  {deliveries.length === 0 ? (
+                    <div style={{ color: 'var(--text-secondary)', textAlign: 'center', marginTop: '4rem' }}>
+                      <Smartphone size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+                      <p>No quick delivery requests submitted yet.</p>
+                    </div>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-secondary)' }}>
+                          <th style={{ padding: '12px', fontWeight: 500 }}>Request ID</th>
+                          <th style={{ padding: '12px', fontWeight: 500 }}>Student / User</th>
+                          <th style={{ padding: '12px', fontWeight: 500 }}>PC No</th>
+                          <th style={{ padding: '12px', fontWeight: 500 }}>Item</th>
+                          <th style={{ padding: '12px', fontWeight: 500 }}>Location</th>
+                          <th style={{ padding: '12px', fontWeight: 500 }}>Rack</th>
+                          <th style={{ padding: '12px', fontWeight: 500 }}>Status</th>
+                          <th style={{ padding: '12px', fontWeight: 500, textAlign: 'right' }}>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deliveries.map(delivery => {
+                          const deliveryUser = users.find(u => u.id === delivery.user_id);
+                          const deliveryItem = inventoryItems.find(i => i.id === delivery.item_id);
+                          return (
+                            <tr key={delivery.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s' }} className="hover-row">
+                              <td style={{ padding: '16px 12px' }} className="mono">#DEL-{delivery.id}</td>
+                              <td style={{ padding: '16px 12px', fontWeight: 600, color: '#fff' }}>{deliveryUser ? deliveryUser.username : `User: ${delivery.user_id}`}</td>
+                              <td style={{ padding: '16px 12px' }} className="mono">{delivery.pc_no || 'N/A'}</td>
+                              <td style={{ padding: '16px 12px', color: 'var(--accent-cyan)' }}>{deliveryItem ? deliveryItem.name : `Item ID: ${delivery.item_id}`}</td>
+                              <td style={{ padding: '16px 12px', color: 'var(--text-secondary)' }}>{delivery.location || delivery.destination}</td>
+                              <td style={{ padding: '16px 12px' }} className="mono">{delivery.rack_id || 'Auto'}</td>
+                              <td style={{ padding: '16px 12px' }}>
+                                <span style={{ 
+                                  padding: '4px 10px', 
+                                  borderRadius: '12px', 
+                                  fontSize: '0.8rem',
+                                  background: 
+                                    delivery.status === 'completed' ? 'rgba(16, 185, 129, 0.1)' : 
+                                    delivery.status === 'in_progress' ? 'rgba(37, 99, 235, 0.1)' : 
+                                    delivery.status === 'pending' ? 'rgba(245, 158, 11, 0.1)' : 
+                                    'rgba(244, 63, 94, 0.1)',
+                                  color: 
+                                    delivery.status === 'completed' ? 'var(--accent-green)' : 
+                                    delivery.status === 'in_progress' ? 'var(--accent-blue)' : 
+                                    delivery.status === 'pending' ? '#f59e0b' : 
+                                    'var(--accent-red)',
+                                  border: `1px solid ${
+                                    delivery.status === 'completed' ? 'rgba(16, 185, 129, 0.3)' : 
+                                    delivery.status === 'in_progress' ? 'rgba(37, 99, 235, 0.3)' : 
+                                    delivery.status === 'pending' ? 'rgba(245, 158, 11, 0.3)' : 
+                                    'rgba(244, 63, 94, 0.3)'
+                                  }`
+                                }}>
+                                  {delivery.status.toUpperCase()}
+                                </span>
+                              </td>
+                              <td style={{ padding: '16px 12px', textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                {delivery.status === 'pending' && (
+                                  <>
+                                    <button 
+                                      onClick={() => handleUpdateDeliveryStatus(delivery.id, 'in_progress')} 
+                                      className="btn btn-success" 
+                                      style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                                    >
+                                      Approve
+                                    </button>
+                                    <button 
+                                      onClick={() => handleUpdateDeliveryStatus(delivery.id, 'failed')} 
+                                      className="btn btn-danger" 
+                                      style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                                    >
+                                      Reject
+                                    </button>
+                                  </>
+                                )}
+                                {delivery.status === 'in_progress' && (
+                                  <>
+                                    <button 
+                                      onClick={() => handleUpdateDeliveryStatus(delivery.id, 'completed')} 
+                                      className="btn btn-success" 
+                                      style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                                    >
+                                      Complete
+                                    </button>
+                                    <button 
+                                      onClick={() => handleUpdateDeliveryStatus(delivery.id, 'failed')} 
+                                      className="btn btn-danger" 
+                                      style={{ padding: '6px 10px', fontSize: '0.85rem' }}
+                                    >
+                                      Fail
+                                    </button>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </GlassPanel>
             </motion.div>

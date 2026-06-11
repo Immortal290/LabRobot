@@ -74,3 +74,20 @@ export const configApi = {
     body: JSON.stringify(config),
   }),
 };
+
+export const deliveriesApi = {
+  getDeliveries: () => fetchWithAuth('/deliveries'),
+  updateDeliveryStatus: (deliveryId: number, status: string) => fetchWithAuth(`/deliveries/${deliveryId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status }),
+  }),
+  requestQuickItem: (payload: { username: string, pc_no: string, item_id: number, location: string, rack_id?: number | null }) => fetchWithAuth('/quick-delivery', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  getQuickDeliveries: (username: string) => fetchWithAuth(`/quick-deliveries?username=${encodeURIComponent(username)}`),
+};
+
+export const usersApi = {
+  getUsers: () => fetchWithAuth('/users'),
+};

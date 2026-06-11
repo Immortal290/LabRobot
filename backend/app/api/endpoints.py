@@ -186,6 +186,42 @@ def update_rack(rack_id: int, update: schemas.RackUpdate, db: Session = Depends(
 
 # ─── DELIVERIES ──────────────────────────────────────────────────────────────
 
+def broadcast_delivery_update(db_delivery, db):
+    from app.main import manager
+    import asyncio, json
+    
+    # Get user
+    user = db.query(models.User).filter(models.User.id == db_delivery.user_id).first()
+    username = user.username if user else "Unknown"
+    
+    # Get item
+    item = db.query(models.Inventory).filter(models.Inventory.id == db_delivery.item_id).first()
+    item_name = item.name if item else "Unknown"
+    
+    delivery_dict = {
+        "type": "delivery_update",
+        "delivery": {
+            "id": db_delivery.id,
+            "user_id": db_delivery.user_id,
+            "username": username,
+            "item_id": db_delivery.item_id,
+            "item_name": item_name,
+            "destination": db_delivery.destination,
+            "pc_no": db_delivery.pc_no,
+            "location": db_delivery.location,
+            "status": db_delivery.status,
+            "created_at": db_delivery.created_at.isoformat() if db_delivery.created_at else None,
+            "completed_at": db_delivery.completed_at.isoformat() if db_delivery.completed_at else None
+        }
+    }
+    
+    broadcast_task = manager.broadcast_to_ui(json.dumps(delivery_dict))
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(broadcast_task)
+    except RuntimeError:
+        pass
+
 @router.get("/deliveries", response_model=List[schemas.Delivery])
 def list_deliveries(db: Session = Depends(database.get_db), current_user: models.User = Depends(dependencies.get_current_active_user)):
     if current_user.role in ["Admin", "Lab Staff"]:
@@ -199,7 +235,15 @@ def create_delivery(delivery: schemas.DeliveryCreate, db: Session = Depends(data
         raise HTTPException(status_code=404, detail="Item not found")
     if item.quantity <= 0:
         raise HTTPException(status_code=400, detail="Item out of stock")
-    db_delivery = models.Delivery(user_id=current_user.id, item_id=delivery.item_id, destination=delivery.destination, rack_id=delivery.rack_id, status="pending")
+    db_delivery = models.Delivery(
+        user_id=current_user.id, 
+        item_id=delivery.item_id, 
+        destination=delivery.destination, 
+        pc_no=delivery.pc_no,
+        location=delivery.location,
+        rack_id=delivery.rack_id, 
+        status="pending"
+    )
     item.quantity -= 1
     if item.quantity == 0:
         item.available = False
@@ -208,6 +252,56 @@ def create_delivery(delivery: schemas.DeliveryCreate, db: Session = Depends(data
     create_log(db, "delivery", f"Delivery requested for item '{item.name}' to {delivery.destination}", user_id=current_user.id)
     db.commit()
     db.refresh(db_delivery)
+    
+    broadcast_delivery_update(db_delivery, db)
+    return db_delivery
+
+@router.get("/quick-deliveries", response_model=List[schemas.Delivery])
+def list_quick_deliveries(username: str, db: Session = Depends(database.get_db)):
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if not user:
+        return []
+    return db.query(models.Delivery).filter(models.Delivery.user_id == user.id).order_by(models.Delivery.created_at.desc()).all()
+
+@router.post("/quick-delivery", response_model=schemas.Delivery)
+def create_quick_delivery(payload: schemas.QuickDeliveryCreate, db: Session = Depends(database.get_db)):
+    # Look up user or create new student account if they don't exist
+    user = db.query(models.User).filter(models.User.username == payload.username).first()
+    if not user:
+        user = models.User(
+            username=payload.username,
+            password_hash=security.get_password_hash("123456"), # default password
+            role="Student"
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    item = db.query(models.Inventory).filter(models.Inventory.id == payload.item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item.quantity <= 0:
+        raise HTTPException(status_code=400, detail="Item out of stock")
+        
+    db_delivery = models.Delivery(
+        user_id=user.id,
+        item_id=payload.item_id,
+        destination=f"PC {payload.pc_no} @ {payload.location}",
+        pc_no=payload.pc_no,
+        location=payload.location,
+        rack_id=payload.rack_id,
+        status="pending"
+    )
+    item.quantity -= 1
+    if item.quantity == 0:
+        item.available = False
+    item.last_transaction = datetime.utcnow()
+    db.add(db_delivery)
+    create_log(db, "delivery", f"Quick mobile request by {payload.username} (PC {payload.pc_no}) for '{item.name}' to {payload.location}", user_id=user.id)
+    db.commit()
+    db.refresh(db_delivery)
+    
+    broadcast_delivery_update(db_delivery, db)
     return db_delivery
 
 @router.put("/deliveries/{delivery_id}", response_model=schemas.Delivery)
@@ -221,6 +315,8 @@ def update_delivery_status(delivery_id: int, update: schemas.DeliveryUpdate, db:
     create_log(db, "delivery", f"Delivery {delivery_id} status → {update.status}", user_id=current_user.id)
     db.commit()
     db.refresh(delivery)
+    
+    broadcast_delivery_update(delivery, db)
     return delivery
 
 # ─── LOGS ────────────────────────────────────────────────────────────────────

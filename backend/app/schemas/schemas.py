@@ -81,6 +81,15 @@ class DeliveryCreate(BaseModel):
     item_id: int
     destination: str
     rack_id: Optional[int] = None
+    pc_no: Optional[str] = None
+    location: Optional[str] = None
+
+class QuickDeliveryCreate(BaseModel):
+    username: str
+    pc_no: str
+    item_id: int
+    location: str
+    rack_id: Optional[int] = None
 
 class DeliveryUpdate(BaseModel):
     status: str
@@ -91,6 +100,8 @@ class Delivery(BaseModel):
     rack_id: Optional[int] = None
     item_id: int
     destination: str
+    pc_no: Optional[str] = None
+    location: Optional[str] = None
     status: str
     created_at: datetime
     completed_at: Optional[datetime] = None

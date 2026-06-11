@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GlassPanel } from '../components/GlassPanel';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Package, LockOpen, LogOut, RefreshCcw, Box, ShieldAlert, Plus, Minus, Server } from 'lucide-react';
+import { Package, LockOpen, LogOut, RefreshCcw, ShieldAlert, Plus, Minus, Server } from 'lucide-react';
 import { inventoryApi, rackApi, configApi } from '../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
 

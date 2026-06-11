@@ -38,9 +38,11 @@ class Delivery(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    rack_id = Column(Integer, ForeignKey("racks.id"))
+    rack_id = Column(Integer, ForeignKey("racks.id"), nullable=True)
     item_id = Column(Integer, ForeignKey("inventory.id"))
     destination = Column(String)
+    pc_no = Column(String, nullable=True)
+    location = Column(String, nullable=True)
     status = Column(String) # pending, in_progress, completed, failed
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
