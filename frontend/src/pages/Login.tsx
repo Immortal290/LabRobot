@@ -22,7 +22,7 @@ export const Login: React.FC = () => {
       formData.append('username', username);
       formData.append('password', password);
 
-      const response = await fetch('http://localhost:8000/api/v1/auth/token', {
+      const response = await fetch('/api/v1/auth/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
@@ -35,7 +35,7 @@ export const Login: React.FC = () => {
       const data = await response.json();
       
       // Fetch user profile using the token
-      const profileResponse = await fetch('http://localhost:8000/api/v1/users/me', {
+      const profileResponse = await fetch('/api/v1/users/me', {
         headers: { 'Authorization': `Bearer ${data.access_token}` }
       });
       const profile = await profileResponse.json();

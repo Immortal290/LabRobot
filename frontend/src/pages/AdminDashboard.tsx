@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GlassPanel } from '../components/GlassPanel';
-import { Battery, Cpu, Map as MapIcon, Package, LogOut, Navigation, Settings, Activity, Edit2, Trash2, Smartphone, QrCode, Copy, Check, ExternalLink } from 'lucide-react';
+import { Battery, Cpu, Map as MapIcon, Package, LogOut, Navigation, Settings, Activity, Edit2, Trash2, Smartphone, QrCode, Copy, Check, ExternalLink, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -27,6 +27,7 @@ export const AdminDashboard: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [copied, setCopied] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [portalUrlString, setPortalUrlString] = useState<string>('');
 
   const loadInventory = async () => {
     try {
@@ -72,17 +73,36 @@ export const AdminDashboard: React.FC = () => {
       loadDeliveries();
       loadUsers();
       loadInventory();
-      const portalUrl = `${window.location.protocol}//${window.location.hostname}:3000/quick-request`;
-      QRCode.toDataURL(portalUrl, {
-        width: 200,
-        margin: 2,
-        color: {
-          dark: '#ffffff',
-          light: '#0a1122',
+      
+      const generateQR = async () => {
+        let host = window.location.host;
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          try {
+            const res = await configApi.getNetworkIp();
+            if (res.ip && res.ip !== '127.0.0.1') {
+              host = `${res.ip}${window.location.port ? `:${window.location.port}` : ''}`;
+            }
+          } catch (e) {
+            console.error('Failed to get network IP', e);
+          }
         }
-      })
-      .then(url => setQrCodeUrl(url))
-      .catch(err => console.error('Failed to generate local QR Code:', err));
+        
+        const generatedUrl = `${window.location.protocol}//${host}/quick-request`;
+        setPortalUrlString(generatedUrl);
+        
+        try {
+          const dataUrl = await QRCode.toDataURL(generatedUrl, {
+            width: 200,
+            margin: 2,
+            color: { dark: '#ffffff', light: '#0a1122' }
+          });
+          setQrCodeUrl(dataUrl);
+        } catch (err) {
+          console.error('Failed to generate local QR Code:', err);
+        }
+      };
+      
+      generateQR();
     }
   }, [activeTab]);
 
@@ -149,7 +169,7 @@ export const AdminDashboard: React.FC = () => {
     configApi.getConfig().then(setConfig).catch(console.error);
 
     // Connect to WebSocket using the current hostname
-    const ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/ui`);
+    const ws = new WebSocket(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/ui`);
     wsRef.current = ws;
 
     ws.onopen = () => console.log('Connected to Backend UI WebSocket');
@@ -233,6 +253,36 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  const handleUpdateUserRole = async (userId: number, currentRole: string) => {
+    const newRole = currentRole === 'Admin' ? 'Student' : 'Admin';
+    if (!window.confirm(`Change role to ${newRole}?`)) return;
+    try {
+      await usersApi.updateUser(userId, { role: newRole });
+      loadUsers();
+    } catch (err) {
+      alert('Failed to update user role');
+    }
+  };
+
+  const handleToggleUserStatus = async (userId: number, currentStatus: boolean) => {
+    try {
+      await usersApi.updateUser(userId, { is_active: !currentStatus });
+      loadUsers();
+    } catch (err) {
+      alert('Failed to update user status');
+    }
+  };
+
+  const handleDeleteUser = async (userId: number) => {
+    if (!window.confirm('Permanently delete this user profile?')) return;
+    try {
+      await usersApi.deleteUser(userId);
+      loadUsers();
+    } catch (err) {
+      alert('Failed to delete user');
+    }
+  };
+
   return (
     <div className="dashboard-container">
       {/* Sidebar */}
@@ -263,6 +313,14 @@ export const AdminDashboard: React.FC = () => {
           >
             <Package size={20} color={activeTab === 'inventory' ? 'var(--accent-cyan)' : 'var(--text-secondary)'} />
             <span>Inventory Management</span>
+          </button>
+          <button 
+            className="btn" 
+            style={{ background: activeTab === 'users' ? 'rgba(37, 99, 235, 0.2)' : 'transparent', color: activeTab === 'users' ? '#fff' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '16px', border: activeTab === 'users' ? '1px solid var(--accent-blue)' : '1px solid transparent', boxShadow: activeTab === 'users' ? '0 0 15px var(--accent-blue-glow)' : 'none' }}
+            onClick={() => setActiveTab('users')}
+          >
+            <User size={20} color={activeTab === 'users' ? 'var(--accent-cyan)' : 'var(--text-secondary)'} />
+            <span>User Management</span>
           </button>
           <button 
             className="btn" 
@@ -594,6 +652,74 @@ export const AdminDashboard: React.FC = () => {
             </motion.div>
           )}
 
+          {activeTab === 'users' && (
+            <motion.div key="users" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.4 }}>
+              <GlassPanel style={{ minHeight: '600px', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', borderBottom: '1px solid var(--glass-border)', paddingBottom: '1.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <User size={28} color="var(--accent-blue)" />
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.5rem' }}>User Profiles & Access Management</h3>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Persistent profile directory. Manage system privileges below the Admin tier.</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
+                        <th style={{ padding: '16px 12px', fontWeight: 600 }}>User ID</th>
+                        <th style={{ padding: '16px 12px', fontWeight: 600 }}>Username / Email</th>
+                        <th style={{ padding: '16px 12px', fontWeight: 600 }}>Privilege Role</th>
+                        <th style={{ padding: '16px 12px', fontWeight: 600 }}>Account Status</th>
+                        <th style={{ padding: '16px 12px', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map((u: any) => (
+                        <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                          <td style={{ padding: '16px 12px' }} className="mono">#{u.id}</td>
+                          <td style={{ padding: '16px 12px', fontWeight: 600 }}>{u.username}</td>
+                          <td style={{ padding: '16px 12px' }}>
+                            <span 
+                              style={{
+                                padding: '4px 10px',
+                                borderRadius: '12px',
+                                fontSize: '0.8rem',
+                                background: u.role === 'Admin' ? 'rgba(244, 63, 94, 0.1)' : 'rgba(37, 99, 235, 0.1)',
+                                color: u.role === 'Admin' ? 'var(--accent-red)' : 'var(--accent-blue)',
+                                border: `1px solid ${u.role === 'Admin' ? 'rgba(244, 63, 94, 0.3)' : 'rgba(37, 99, 235, 0.3)'}`
+                              }}
+                            >
+                              {u.role}
+                            </span>
+                          </td>
+                          <td style={{ padding: '16px 12px' }}>
+                            <span style={{ color: u.is_active ? 'var(--accent-green)' : 'var(--text-secondary)' }}>
+                              {u.is_active ? 'Active' : 'Suspended'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '16px 12px', textAlign: 'right', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                            <button onClick={() => handleUpdateUserRole(u.id, u.role)} className="btn" style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', background: 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)' }}>
+                              <Edit2 size={14} /> Toggle Role
+                            </button>
+                            <button onClick={() => handleToggleUserStatus(u.id, u.is_active)} className="btn" style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', background: u.is_active ? 'rgba(244, 63, 94, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: u.is_active ? 'var(--accent-red)' : 'var(--accent-green)', border: u.is_active ? '1px solid rgba(244, 63, 94, 0.2)' : '1px solid rgba(16, 185, 129, 0.2)' }}>
+                              {u.is_active ? <LogOut size={14} /> : <Check size={14} />} {u.is_active ? 'Suspend' : 'Activate'}
+                            </button>
+                            <button onClick={() => handleDeleteUser(u.id)} className="btn" style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', background: 'rgba(244, 63, 94, 0.1)', color: 'var(--accent-red)', border: '1px solid rgba(244, 63, 94, 0.2)' }}>
+                              <Trash2 size={14} /> Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </GlassPanel>
+            </motion.div>
+          )}
+
           {activeTab === 'mobile_portal' && (
             <motion.div key="mobile_portal" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.4 }}>
               <div className="grid-cols-2" style={{ gap: '32px', marginBottom: '2rem' }}>
@@ -624,12 +750,12 @@ export const AdminDashboard: React.FC = () => {
                       readOnly 
                       type="text" 
                       className="input-field" 
-                      value={`${window.location.protocol}//${window.location.hostname}:3000/quick-request`}
+                      value={portalUrlString || `${window.location.protocol}//${window.location.host}/quick-request`}
                       style={{ fontSize: '0.85rem', padding: '10px 14px' }}
                     />
                     <button 
                       onClick={() => {
-                        navigator.clipboard.writeText(`${window.location.protocol}//${window.location.hostname}:3000/quick-request`);
+                        navigator.clipboard.writeText(portalUrlString || `${window.location.protocol}//${window.location.host}/quick-request`);
                         setCopied(true);
                         setTimeout(() => setCopied(false), 2000);
                       }}

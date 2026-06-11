@@ -16,6 +16,20 @@ def create_log(db, event_type, description, user_id=None):
     db.add(models.Log(event_type=event_type, user_id=user_id, description=description))
     db.commit()
 
+# ─── NETWORK UTILS ───────────────────────────────────────────────────────────
+
+@router.get("/network/ip")
+def get_local_ip():
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return {"ip": ip}
+    except Exception:
+        return {"ip": "127.0.0.1"}
+
 # ─── AUTH ────────────────────────────────────────────────────────────────────
 
 @router.post("/auth/token", response_model=schemas.Token)

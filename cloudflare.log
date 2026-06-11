@@ -1,0 +1,44 @@
+2026-06-11T12:45:30Z INF Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. However, be aware that these account-less Tunnels have no uptime guarantee, are subject to the Cloudflare Online Services Terms of Use (https://www.cloudflare.com/website-terms/), and Cloudflare reserves the right to investigate your use of Tunnels for violations of such terms. If you intend to use Tunnels in production you should use a pre-created named tunnel by following: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps
+2026-06-11T12:45:30Z INF Requesting new quick Tunnel on trycloudflare.com...
+2026-06-11T12:45:35Z INF +--------------------------------------------------------------------------------------------+
+2026-06-11T12:45:35Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |
+2026-06-11T12:45:35Z INF |  https://benz-bacon-tracks-boulder.trycloudflare.com                                       |
+2026-06-11T12:45:35Z INF +--------------------------------------------------------------------------------------------+
+2026-06-11T12:45:35Z INF Cannot determine default configuration path. No file [config.yml config.yaml] in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp /etc/cloudflared /usr/local/etc/cloudflared]
+2026-06-11T12:45:35Z INF Version 2026.6.0 (Checksum 08d27c4c5d3ed73ee3e98ef2ddceb4ad09fd4cfc28e243565a189538e8ccd706)
+2026-06-11T12:45:35Z INF GOOS: linux, GOVersion: go1.26.4, GoArch: amd64
+2026-06-11T12:45:35Z INF Settings: map[ha-connections:1 protocol:quic url:http://localhost:3000]
+2026-06-11T12:45:35Z INF Autoupdate frequency is set autoupdateFreq=86400000
+2026-06-11T12:45:35Z INF Generated Connector ID: 6e8a4d89-9564-474a-b26f-023cc47d25fb
+2026-06-11T12:45:35Z INF Initial protocol quic
+2026-06-11T12:45:35Z INF ICMP proxy will use 172.20.10.3 as source for IPv4
+2026-06-11T12:45:35Z INF ICMP proxy will use 2409:40e0:1032:39ac:966b:2a48:a0f9:9e70 in zone enx82953a42349a as source for IPv6
+2026/06/11 18:15:35 failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+2026-06-11T12:45:35Z INF ICMP proxy will use 172.20.10.3 as source for IPv4
+2026-06-11T12:45:35Z INF ICMP proxy will use 2409:40e0:1032:39ac:966b:2a48:a0f9:9e70 in zone enx82953a42349a as source for IPv6
+2026-06-11T12:45:35Z INF Starting metrics server on 127.0.0.1:20241/metrics
+2026-06-11T12:45:35Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=2606:4700:a8::9
+2026-06-11T12:45:36Z INF Registered tunnel connection connIndex=0 connection=c10d922c-9333-4db4-8935-5f5baa86e510 event=0 ip=2606:4700:a8::9 location=del03 protocol=quic
+2026-06-11T12:45:45Z INF +-----------------------------------------------------------------------------------------------+
+2026-06-11T12:45:45Z INF |                                    CONNECTIVITY PRE-CHECKS                                    |
+2026-06-11T12:45:45Z INF +-----------------------------------------------------------------------------------------------+
+2026-06-11T12:45:45Z INF |  COMPONENT         TARGET                     STATUS  DETAILS                                 |
+2026-06-11T12:45:45Z INF |  DNS Resolution    region1.v2.argotunnel.com  PASS    DNS Resolved successfully               |
+2026-06-11T12:45:45Z INF |  DNS Resolution    region2.v2.argotunnel.com  PASS    DNS Resolved successfully               |
+2026-06-11T12:45:45Z INF |  UDP Connectivity  region1.v2.argotunnel.com  PASS    QUIC connection successful              |
+2026-06-11T12:45:45Z INF |  UDP Connectivity  region2.v2.argotunnel.com  FAIL    QUIC connection failed                  |
+2026-06-11T12:45:45Z INF |  TCP Connectivity  region1.v2.argotunnel.com  PASS    HTTP/2 connection successful            |
+2026-06-11T12:45:45Z INF |  TCP Connectivity  region2.v2.argotunnel.com  PASS    HTTP/2 connection successful            |
+2026-06-11T12:45:45Z INF |  Cloudflare API    api.cloudflare.com:443     PASS    API is reachable                        |
+2026-06-11T12:45:45Z INF |  WARNING: Allow outbound QUIC traffic on port 7844 or use HTTP2.                              |
+2026-06-11T12:45:45Z INF |                                                                                               |
+2026-06-11T12:45:45Z INF |  SUMMARY: Environment ready with degraded transport. cloudflared will proceed using 'http2'.  |
+2026-06-11T12:45:45Z INF +-----------------------------------------------------------------------------------------------+
+2026-06-11T12:45:45Z INF precheck component="DNS Resolution" details="DNS Resolved successfully" run_id=0eea2854-4f8d-4f91-a376-f6224a272175 status=pass target=region1.v2.argotunnel.com
+2026-06-11T12:45:45Z INF precheck component="DNS Resolution" details="DNS Resolved successfully" run_id=0eea2854-4f8d-4f91-a376-f6224a272175 status=pass target=region2.v2.argotunnel.com
+2026-06-11T12:45:45Z INF precheck component="UDP Connectivity" details="QUIC connection successful" run_id=0eea2854-4f8d-4f91-a376-f6224a272175 status=pass target=region1.v2.argotunnel.com
+2026-06-11T12:45:45Z INF precheck component="UDP Connectivity" details="QUIC connection failed" run_id=0eea2854-4f8d-4f91-a376-f6224a272175 status=fail target=region2.v2.argotunnel.com
+2026-06-11T12:45:45Z INF precheck component="TCP Connectivity" details="HTTP/2 connection successful" run_id=0eea2854-4f8d-4f91-a376-f6224a272175 status=pass target=region1.v2.argotunnel.com
+2026-06-11T12:45:45Z INF precheck component="TCP Connectivity" details="HTTP/2 connection successful" run_id=0eea2854-4f8d-4f91-a376-f6224a272175 status=pass target=region2.v2.argotunnel.com
+2026-06-11T12:45:45Z INF precheck component="Cloudflare API" details="API is reachable" run_id=0eea2854-4f8d-4f91-a376-f6224a272175 status=pass target=api.cloudflare.com:443
+2026-06-11T12:45:45Z INF precheck complete hard_fail=false run_id=0eea2854-4f8d-4f91-a376-f6224a272175 suggested_protocol=http2

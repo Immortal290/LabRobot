@@ -1,4 +1,4 @@
-const API_BASE_URL = `http://${window.location.hostname}:8000/api/v1`;
+const API_BASE_URL = '/api/v1';
 
 export const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
   const token = localStorage.getItem('token');
@@ -73,6 +73,7 @@ export const configApi = {
     method: 'PUT',
     body: JSON.stringify(config),
   }),
+  getNetworkIp: () => fetchWithAuth('/network/ip'),
 };
 
 export const deliveriesApi = {
@@ -90,4 +91,11 @@ export const deliveriesApi = {
 
 export const usersApi = {
   getUsers: () => fetchWithAuth('/users'),
+  updateUser: (id: number, data: any) => fetchWithAuth(`/users/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  deleteUser: (id: number) => fetchWithAuth(`/users/${id}`, {
+    method: 'DELETE',
+  })
 };

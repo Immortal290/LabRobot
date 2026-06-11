@@ -56,7 +56,7 @@ export const QuickRequest: React.FC = () => {
     }
 
     // Connect to WebSocket for real-time telemetry and delivery updates
-    const ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/ui`);
+    const ws = new WebSocket(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/ui`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
