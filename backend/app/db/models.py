@@ -11,6 +11,20 @@ class User(Base):
     password_hash = Column(String)
     role = Column(String) # Admin, Lab Staff, Student/User
     is_active = Column(Boolean, default=True)
+    
+    profile = relationship("Profile", back_populates="user", uselist=False)
+
+class Profile(Base):
+    __tablename__ = "profiles"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
+    email = Column(String, unique=True, index=True, nullable=True)
+    full_name = Column(String, nullable=True)
+    department = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)
+    
+    user = relationship("User", back_populates="profile")
 
 class Inventory(Base):
     __tablename__ = "inventory"
@@ -82,4 +96,8 @@ class SystemConfig(Base):
     maintenance_mode = Column(Boolean, default=False)
     theme = Column(String, default="dark")
     telemetry_frequency = Column(Integer, default=1000) # milliseconds
+    voice_assistant = Column(Boolean, default=True)
+    auto_return_to_base = Column(Boolean, default=True)
+    collision_margin = Column(Float, default=0.5)
+    cargo_temp_target = Column(Float, default=20.0)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

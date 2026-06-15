@@ -183,7 +183,7 @@ export const QuickRequest: React.FC = () => {
             <Smartphone size={18} color="#fff" />
           </div>
           <div>
-            <h1 style={{ fontSize: '1.2rem', margin: 0, fontWeight: 700, letterSpacing: '-0.5px' }}>LabRobot</h1>
+            <h1 style={{ fontSize: '1.2rem', margin: 0, fontWeight: 700, letterSpacing: '-0.5px' }}>Lab Buddy</h1>
             <span style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)', display: 'block', marginTop: '-2px', fontWeight: 600 }}>Mobile Request Portal</span>
           </div>
         </div>

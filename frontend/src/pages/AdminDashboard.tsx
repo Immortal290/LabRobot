@@ -13,7 +13,7 @@ export const AdminDashboard: React.FC = () => {
   const [telemetry, setTelemetry] = useState({ battery: 100, cpu_temp: 40, x: 0, y: 0, status: 'Idle', mission: 'Standby', rack_status: ["locked", "locked", "locked", "locked"] });
   const [logs, setLogs] = useState<{ time: string, event: string, type: 'info' | 'success' | 'warning' }[]>([]);
   const [activeTab, setActiveTab] = useState('live_map');
-  const [config, setConfig] = useState<any>({ max_speed: 1.0, safe_mode: true, maintenance_mode: false, telemetry_frequency: 1000 });
+  const [config, setConfig] = useState<any>({ max_speed: 1.0, safe_mode: true, maintenance_mode: false, telemetry_frequency: 1000, voice_assistant: true, auto_return_to_base: true, collision_margin: 0.5, cargo_temp_target: 20.0 });
   const wsRef = useRef<WebSocket | null>(null);
 
   // Inventory State
@@ -76,18 +76,23 @@ export const AdminDashboard: React.FC = () => {
       
       const generateQR = async () => {
         let host = window.location.host;
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-          try {
-            const res = await configApi.getNetworkIp();
-            if (res.ip && res.ip !== '127.0.0.1') {
-              host = `${res.ip}${window.location.port ? `:${window.location.port}` : ''}`;
+        let generatedUrl = `${window.location.protocol}//${host}/quick-request`;
+        
+        try {
+          const res = await configApi.getTunnelUrl();
+          if (res && res.url) {
+            generatedUrl = `${res.url}/quick-request`;
+          } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            const ipRes = await configApi.getNetworkIp();
+            if (ipRes.ip && ipRes.ip !== '127.0.0.1') {
+              host = `${ipRes.ip}${window.location.port ? `:${window.location.port}` : ''}`;
+              generatedUrl = `${window.location.protocol}//${host}/quick-request`;
             }
-          } catch (e) {
-            console.error('Failed to get network IP', e);
           }
+        } catch (e) {
+          console.error('Failed to get tunnel URL or network IP', e);
         }
         
-        const generatedUrl = `${window.location.protocol}//${host}/quick-request`;
         setPortalUrlString(generatedUrl);
         
         try {
@@ -647,6 +652,76 @@ export const AdminDashboard: React.FC = () => {
                       <span>5000 ms (Eco)</span>
                     </div>
                   </GlassPanel>
+
+                  {/* Voice Assistant Toggle */}
+                  <GlassPanel className="hover-scale" style={{ padding: '24px', background: 'rgba(0,0,0,0.2)' }}>
+                    <div className="flex-between" style={{ marginBottom: '16px' }}>
+                      <div>
+                        <h4 style={{ fontSize: '1.2rem', marginBottom: '8px', color: config.voice_assistant ? 'var(--accent-cyan)' : '#fff' }}>Voice Assistant</h4>
+                        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: 0 }}>Enables onboard audio announcements and interactive voice responses for lab users.</p>
+                      </div>
+                      <div className="switch-container" onClick={() => handleConfigChange('voice_assistant', !config.voice_assistant)}>
+                        <div className="switch" data-active={config.voice_assistant} style={{ background: config.voice_assistant ? 'var(--accent-cyan)' : '' }}>
+                          <div className="switch-handle"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </GlassPanel>
+
+                  {/* Auto Return to Base Toggle */}
+                  <GlassPanel className="hover-scale" style={{ padding: '24px', background: 'rgba(0,0,0,0.2)' }}>
+                    <div className="flex-between" style={{ marginBottom: '16px' }}>
+                      <div>
+                        <h4 style={{ fontSize: '1.2rem', marginBottom: '8px', color: config.auto_return_to_base ? 'var(--accent-green)' : '#fff' }}>Auto-Return to Base</h4>
+                        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: '1.5', margin: 0 }}>Robot automatically returns to the docking station after a delivery or when idle for 5 minutes.</p>
+                      </div>
+                      <div className="switch-container" onClick={() => handleConfigChange('auto_return_to_base', !config.auto_return_to_base)}>
+                        <div className="switch" data-active={config.auto_return_to_base} style={{ background: config.auto_return_to_base ? 'var(--accent-green)' : '' }}>
+                          <div className="switch-handle"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </GlassPanel>
+
+                  {/* Collision Margin Slider */}
+                  <GlassPanel className="hover-scale" style={{ padding: '24px', background: 'rgba(0,0,0,0.2)' }}>
+                    <div className="flex-between" style={{ marginBottom: '16px' }}>
+                      <h4 style={{ fontSize: '1.2rem', margin: 0 }}>Collision Avoidance Margin</h4>
+                      <span className="mono" style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--accent-purple)' }}>{config.collision_margin} m</span>
+                    </div>
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '24px' }}>Sets the minimum safe distance the robot must maintain from dynamic obstacles.</p>
+                    <input 
+                      type="range" 
+                      className="slider" 
+                      min="0.1" max="1.5" step="0.1" 
+                      value={config.collision_margin} 
+                      onChange={(e) => handleConfigChange('collision_margin', parseFloat(e.target.value))} 
+                    />
+                    <div className="flex-between" style={{ marginTop: '12px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      <span>0.1 m (Tight)</span>
+                      <span>1.5 m (Conservative)</span>
+                    </div>
+                  </GlassPanel>
+
+                  {/* Cargo Temp Target Slider */}
+                  <GlassPanel className="hover-scale" style={{ padding: '24px', background: 'rgba(0,0,0,0.2)' }}>
+                    <div className="flex-between" style={{ marginBottom: '16px' }}>
+                      <h4 style={{ fontSize: '1.2rem', margin: 0 }}>Cargo Target Temperature</h4>
+                      <span className="mono" style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--accent-blue)' }}>{config.cargo_temp_target}°C</span>
+                    </div>
+                    <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '24px' }}>Regulates the internal cooling unit for transporting temperature-sensitive lab samples.</p>
+                    <input 
+                      type="range" 
+                      className="slider" 
+                      min="2.0" max="25.0" step="1.0" 
+                      value={config.cargo_temp_target} 
+                      onChange={(e) => handleConfigChange('cargo_temp_target', parseFloat(e.target.value))} 
+                    />
+                    <div className="flex-between" style={{ marginTop: '12px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      <span>2°C (Cold)</span>
+                      <span>25°C (Ambient)</span>
+                    </div>
+                  </GlassPanel>
                 </div>
               </GlassPanel>
             </motion.div>
@@ -781,7 +856,7 @@ export const AdminDashboard: React.FC = () => {
                   <Smartphone size={40} color="var(--accent-purple)" style={{ marginBottom: '16px' }} />
                   <h3 style={{ margin: '0 0 12px 0' }}>Interactive Mobile Portal</h3>
                   <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '16px' }}>
-                    The quick-request portal enables lab users and students to dispatch the LabRobot from their smartphones without needing to log in beforehand.
+                    The quick-request portal enables lab users and students to dispatch the Lab Buddy from their smartphones without needing to log in beforehand.
                   </p>
                   <ul style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px', margin: 0 }}>
                     <li><strong>Direct Validation:</strong> User details are checked and registered automatically.</li>

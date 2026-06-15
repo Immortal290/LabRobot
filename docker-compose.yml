@@ -24,6 +24,8 @@ services:
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
     ports:
       - "8000:8000"
+    volumes:
+      - tunnel_logs:/logs
     depends_on:
       - db
     restart: unless-stopped
@@ -61,5 +63,17 @@ services:
       - backend
     restart: unless-stopped
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: labrobot_tunnel
+    user: root
+    command: tunnel --url http://frontend:80 --no-autoupdate --logfile /logs/cloudflared.log
+    depends_on:
+      - frontend
+    volumes:
+      - tunnel_logs:/logs
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  tunnel_logs:

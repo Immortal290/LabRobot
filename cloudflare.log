@@ -42,3 +42,12 @@
 2026-06-11T12:45:45Z INF precheck component="TCP Connectivity" details="HTTP/2 connection successful" run_id=0eea2854-4f8d-4f91-a376-f6224a272175 status=pass target=region2.v2.argotunnel.com
 2026-06-11T12:45:45Z INF precheck component="Cloudflare API" details="API is reachable" run_id=0eea2854-4f8d-4f91-a376-f6224a272175 status=pass target=api.cloudflare.com:443
 2026-06-11T12:45:45Z INF precheck complete hard_fail=false run_id=0eea2854-4f8d-4f91-a376-f6224a272175 suggested_protocol=http2
+2026-06-11T13:02:47Z INF Initiating graceful shutdown due to signal terminated ...
+2026-06-11T13:02:47Z ERR failed to run the datagram handler error="Application error 0x0 (remote)" connIndex=0 event=0 ip=2606:4700:a8::9
+2026-06-11T13:02:47Z ERR failed to serve tunnel connection error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=2606:4700:a8::9
+2026-06-11T13:02:47Z ERR Serve tunnel error error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=2606:4700:a8::9
+2026-06-11T13:02:47Z INF Retrying connection in up to 1s connIndex=0 event=0 ip=2606:4700:a8::9
+2026-06-11T13:02:47Z ERR Connection terminated connIndex=0
+2026-06-11T13:02:47Z ERR no more connections active and exiting
+2026-06-11T13:02:47Z INF Tunnel server stopped
+2026-06-11T13:02:47Z INF Metrics server stopped

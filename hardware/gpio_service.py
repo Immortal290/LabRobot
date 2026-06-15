@@ -114,7 +114,7 @@ def setup_callbacks():
     buttons['btn_refresh'].when_pressed = handle_refresh
 
 if __name__ == "__main__":
-    print("Initializing LabRobot Hardware Service...")
+    print("Initializing Lab Buddy Hardware Service...")
     init_gpio()
     setup_callbacks()
     

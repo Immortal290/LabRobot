@@ -111,7 +111,7 @@ export const UserDashboard: React.FC = () => {
         <ShieldAlert size={80} color="var(--accent-red)" style={{ animation: 'pulse-glow 2s infinite' }} />
         <h1 style={{ color: 'var(--accent-red)' }}>System Under Maintenance</h1>
         <p style={{ maxWidth: '600px', color: 'var(--text-secondary)' }}>
-          LabRobot operations are currently suspended for manual servicing by administrators. All delivery and rack access protocols are temporarily offline.
+          Lab Buddy operations are currently suspended for manual servicing by administrators. All delivery and rack access protocols are temporarily offline.
         </p>
         <button onClick={handleLogout} className="btn" style={{ background: 'rgba(255,255,255,0.1)' }}>
           Logout
@@ -129,7 +129,7 @@ export const UserDashboard: React.FC = () => {
           </div>
           <div>
             <h2 style={{ fontSize: '2rem', margin: 0 }}>Welcome, {user?.username}</h2>
-            <span style={{ color: 'var(--accent-blue)', letterSpacing: '1px', textTransform: 'uppercase', fontSize: '0.85rem', fontWeight: 600 }}>LabRobot Secure Terminal</span>
+            <span style={{ color: 'var(--accent-blue)', letterSpacing: '1px', textTransform: 'uppercase', fontSize: '0.85rem', fontWeight: 600 }}>Lab Buddy Secure Terminal</span>
           </div>
         </div>
         <button onClick={handleLogout} className="btn" style={{ background: 'rgba(244, 63, 94, 0.1)', color: 'var(--accent-red)', border: '1px solid rgba(244, 63, 94, 0.2)' }}>

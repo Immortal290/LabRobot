@@ -21,6 +21,10 @@ with SessionLocal() as db:
     try:
         db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS pc_no VARCHAR;"))
         db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS location VARCHAR;"))
+        db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS voice_assistant BOOLEAN DEFAULT TRUE;"))
+        db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS auto_return_to_base BOOLEAN DEFAULT TRUE;"))
+        db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS collision_margin FLOAT DEFAULT 0.5;"))
+        db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS cargo_temp_target FLOAT DEFAULT 20.0;"))
         db.commit()
     except Exception as e:
         logger.error(f"Migration error: {e}")
@@ -36,10 +40,16 @@ with SessionLocal() as db:
     if db.query(models.User).count() == 0:
         db.add_all([
             models.User(username="admin", password_hash=security.get_password_hash("admin"), role="Admin"),
-            models.User(username="roymsamriddha@gmail.com", password_hash=security.get_password_hash("123456"), role="Admin"),
             models.User(username="user", password_hash=security.get_password_hash("user"), role="Student"),
         ])
         db.commit()
+
+    # Ensure all users have a profile
+    for user in db.query(models.User).all():
+        if not user.profile:
+            profile = models.Profile(user_id=user.id)
+            db.add(profile)
+    db.commit()
     
     # Seed Inventory if none exist
     if db.query(models.Inventory).count() == 0:

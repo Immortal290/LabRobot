@@ -74,6 +74,7 @@ export const configApi = {
     body: JSON.stringify(config),
   }),
   getNetworkIp: () => fetchWithAuth('/network/ip'),
+  getTunnelUrl: () => fetchWithAuth('/network/tunnel'),
 };
 
 export const deliveriesApi = {

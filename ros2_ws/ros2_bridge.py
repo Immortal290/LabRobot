@@ -92,7 +92,7 @@ async def run_mock_bridge():
                         payload["log"] = random.choice(LOG_EVENTS)
 
                     await ws.send(json.dumps(payload))
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.1) # 10Hz for smoother real-time updates
 
         except Exception as e:
             print(f"WebSocket connection failed: {e}. Retrying in 5s...")
@@ -104,5 +104,5 @@ if __name__ == "__main__":
         print("ERROR: Please install the websockets library: pip install websockets")
         exit(1)
 
-    print("Starting LabRobot ROS2 Bridge...")
+    print("Starting Lab Buddy ROS2 Bridge...")
     asyncio.run(run_mock_bridge())

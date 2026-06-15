@@ -22,9 +22,25 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
 
+class ProfileBase(BaseModel):
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    department: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+class ProfileUpdate(ProfileBase):
+    pass
+
+class Profile(ProfileBase):
+    id: int
+    user_id: int
+    class Config:
+        from_attributes = True
+
 class User(UserBase):
     id: int
     is_active: bool
+    profile: Optional[Profile] = None
     class Config:
         from_attributes = True
 
@@ -138,6 +154,10 @@ class SystemConfigBase(BaseModel):
     maintenance_mode: bool
     theme: str
     telemetry_frequency: int
+    voice_assistant: bool
+    auto_return_to_base: bool
+    collision_margin: float
+    cargo_temp_target: float
 
 class SystemConfigUpdate(BaseModel):
     max_speed: Optional[float] = None
@@ -145,6 +165,10 @@ class SystemConfigUpdate(BaseModel):
     maintenance_mode: Optional[bool] = None
     theme: Optional[str] = None
     telemetry_frequency: Optional[int] = None
+    voice_assistant: Optional[bool] = None
+    auto_return_to_base: Optional[bool] = None
+    collision_margin: Optional[float] = None
+    cargo_temp_target: Optional[float] = None
 
 class SystemConfig(SystemConfigBase):
     id: int

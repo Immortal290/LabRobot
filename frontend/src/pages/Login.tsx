@@ -55,7 +55,7 @@ export const Login: React.FC = () => {
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <Bot size={48} color="var(--accent-cyan)" style={{ margin: '0 auto 1rem' }} />
           <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: 'var(--accent-cyan)' }}>
-            LabRobot Secure Access
+            Lab Buddy Secure Access
           </h1>
           <p style={{ color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
             Enter your credentials to continue

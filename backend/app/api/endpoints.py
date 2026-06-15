@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta, datetime
 from typing import List, Optional
+from sqlalchemy import text
 
 from app.core import security
 from app.core.config import settings
@@ -30,6 +31,27 @@ def get_local_ip():
     except Exception:
         return {"ip": "127.0.0.1"}
 
+@router.get("/network/tunnel")
+def get_tunnel_url():
+    import os, re
+    log_path = "/logs/cloudflared.log"
+    if not os.path.exists(log_path):
+        return {"url": None}
+    
+    try:
+        with open(log_path, "r") as f:
+            content = f.read()
+            # Match https://*.trycloudflare.com
+            matches = re.findall(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com", content)
+            if matches:
+                # Return the latest match
+                return {"url": matches[-1]}
+    except Exception as e:
+        print(f"Error reading tunnel log: {e}")
+        pass
+        
+    return {"url": None}
+
 # ─── AUTH ────────────────────────────────────────────────────────────────────
 
 @router.post("/auth/token", response_model=schemas.Token)
@@ -46,6 +68,22 @@ def login_for_access_token(db: Session = Depends(database.get_db), form_data: OA
 def read_users_me(current_user: models.User = Depends(dependencies.get_current_active_user)):
     return current_user
 
+@router.put("/users/me/profile", response_model=schemas.Profile)
+def update_profile(profile_update: schemas.ProfileUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(dependencies.get_current_active_user)):
+    profile = db.query(models.Profile).filter(models.Profile.user_id == current_user.id).first()
+    if not profile:
+        profile = models.Profile(user_id=current_user.id)
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+        
+    for field, value in profile_update.model_dump(exclude_none=True).items():
+        setattr(profile, field, value)
+    
+    db.commit()
+    db.refresh(profile)
+    return profile
+
 # ─── USERS ───────────────────────────────────────────────────────────────────
 
 @router.get("/users", response_model=List[schemas.User])
@@ -58,6 +96,13 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)
         raise HTTPException(status_code=400, detail="Username already exists")
     db_user = models.User(username=user.username, password_hash=security.get_password_hash(user.password), role=user.role)
     db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    
+    # Create empty profile
+    db_profile = models.Profile(user_id=db_user.id)
+    db.add(db_profile)
+    
     create_log(db, "admin", f"Created user: {user.username}", user_id=current_user.id)
     db.commit()
     db.refresh(db_user)
@@ -65,6 +110,9 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(database.get_db)
 
 @router.put("/users/{user_id}", response_model=schemas.User)
 def update_user(user_id: int, update: schemas.UserUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(dependencies.get_admin_user)):
+    if user_id == current_user.id and (update.role is not None or update.is_active is not None):
+        raise HTTPException(status_code=400, detail="Cannot modify your own role or active status")
+        
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -76,10 +124,23 @@ def update_user(user_id: int, update: schemas.UserUpdate, db: Session = Depends(
     return db_user
 
 @router.delete("/users/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(database.get_db), _=Depends(dependencies.get_admin_user)):
+def delete_user(user_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(dependencies.get_admin_user)):
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+        
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+        
+    # Delete related profile
+    if hasattr(db_user, "profile") and db_user.profile:
+        db.delete(db_user.profile)
+        
+    # Nullify deliveries
+    db.execute(text(f"UPDATE deliveries SET user_id = NULL WHERE user_id = {user_id}"))
+    db.execute(text(f"UPDATE logs SET user_id = NULL WHERE user_id = {user_id}"))
+    db.execute(text(f"UPDATE racks SET assigned_user = NULL WHERE assigned_user = {user_id}"))
+    
     db.delete(db_user)
     db.commit()
     return {"ok": True}
@@ -290,6 +351,11 @@ def create_quick_delivery(payload: schemas.QuickDeliveryCreate, db: Session = De
         db.add(user)
         db.commit()
         db.refresh(user)
+        
+        # Create empty profile
+        db_profile = models.Profile(user_id=user.id)
+        db.add(db_profile)
+        db.commit()
 
     item = db.query(models.Inventory).filter(models.Inventory.id == payload.item_id).first()
     if not item:
