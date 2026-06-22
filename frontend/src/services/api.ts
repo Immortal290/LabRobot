@@ -55,6 +55,7 @@ export const inventoryApi = {
 };
 
 export const rackApi = {
+  getRacks: () => fetchWithAuth('/racks'),
   unlockRack: (rackId: number) => fetchWithAuth(`/racks/${rackId}/unlock`, { method: 'PUT' }),
   lockRack: (rackId: number) => fetchWithAuth(`/racks/${rackId}/lock`, { method: 'PUT' }),
   verifyAccess: (rackId: number, password: string) => fetchWithAuth(`/racks/${rackId}/verify`, {
