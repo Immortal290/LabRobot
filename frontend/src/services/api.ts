@@ -88,6 +88,31 @@ export const deliveriesApi = {
     body: JSON.stringify(payload),
   }),
   getQuickDeliveries: (username: string) => fetchWithAuth(`/quick-deliveries?username=${encodeURIComponent(username)}`),
+  cancelDelivery: (deliveryId: number) => fetchWithAuth(`/deliveries/${deliveryId}/cancel`, {
+    method: 'DELETE',
+  }),
+  confirmPickup: (deliveryId: number) => fetchWithAuth(`/deliveries/${deliveryId}/confirm-pickup`, {
+    method: 'POST',
+  }),
+};
+
+export const robotApi = {
+  sendCommand: (action: string, panelId?: number) => fetchWithAuth('/robot/command', {
+    method: 'POST',
+    body: JSON.stringify({ action, panel_id: panelId ?? null }),
+  }),
+  returnToBase: () => fetchWithAuth('/robot/command', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'return_to_base' }),
+  }),
+  unlockPanel: (panelId: number) => fetchWithAuth('/robot/command', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'unlock_panel', panel_id: panelId }),
+  }),
+  emergencyStop: () => fetchWithAuth('/robot/command', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'emergency_stop' }),
+  }),
 };
 
 export const usersApi = {

@@ -108,19 +108,37 @@ class QuickDeliveryCreate(BaseModel):
     rack_id: Optional[int] = None
 
 class DeliveryUpdate(BaseModel):
+    # Valid values: pending, validating, assigned, navigating, arrived,
+    # panel_open, pickup_timeout, completed, returning, cancelled, failed
     status: str
+    eta_seconds: Optional[int] = None
+
+class DeliveryCancelResponse(BaseModel):
+    ok: bool
+    message: str
+
+class PickupConfirmResponse(BaseModel):
+    ok: bool
+    delivery_id: int
+    status: str
+
+class RobotCommand(BaseModel):
+    action: str  # "return_to_base", "unlock_panel", "emergency_stop"
+    panel_id: Optional[int] = None
 
 class Delivery(BaseModel):
     id: int
-    user_id: int
+    user_id: Optional[int] = None
     rack_id: Optional[int] = None
     item_id: int
     destination: str
     pc_no: Optional[str] = None
     location: Optional[str] = None
     status: str
+    eta_seconds: Optional[int] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
     class Config:
         from_attributes = True
 

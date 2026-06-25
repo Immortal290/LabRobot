@@ -51,15 +51,19 @@ class Delivery(Base):
     __tablename__ = "deliveries"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     rack_id = Column(Integer, ForeignKey("racks.id"), nullable=True)
     item_id = Column(Integer, ForeignKey("inventory.id"))
     destination = Column(String)
     pc_no = Column(String, nullable=True)
     location = Column(String, nullable=True)
-    status = Column(String) # pending, in_progress, completed, failed
+    # Status values: pending, validating, assigned, navigating, arrived,
+    # panel_open, pickup_timeout, completed, returning, cancelled, failed
+    status = Column(String)
+    eta_seconds = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
 
 class Log(Base):
     __tablename__ = "logs"

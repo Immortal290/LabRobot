@@ -399,7 +399,91 @@ def update_delivery_status(delivery_id: int, update: schemas.DeliveryUpdate, db:
     broadcast_delivery_update(delivery, db)
     return delivery
 
+
+@router.delete("/deliveries/{delivery_id}/cancel", response_model=schemas.DeliveryCancelResponse)
+def cancel_delivery(delivery_id: int, db: Session = Depends(database.get_db)):
+    """User cancels a delivery before the robot has been dispatched (navigating)."""
+    delivery = db.query(models.Delivery).filter(models.Delivery.id == delivery_id).first()
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+
+    cancellable_statuses = ["pending", "validating", "assigned"]
+    if delivery.status not in cancellable_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel delivery in status '{delivery.status}'. Robot may already be en route."
+        )
+
+    item = db.query(models.Inventory).filter(models.Inventory.id == delivery.item_id).first()
+    if item:
+        item.quantity += 1
+        item.available = True
+        item.last_transaction = datetime.utcnow()
+
+    delivery.status = "cancelled"
+    delivery.cancelled_at = datetime.utcnow()
+    create_log(db, "delivery", f"Delivery {delivery_id} cancelled by user")
+    db.commit()
+    db.refresh(delivery)
+    broadcast_delivery_update(delivery, db)
+    return {"ok": True, "message": "Delivery cancelled successfully. Inventory restored."}
+
+
+@router.post("/deliveries/{delivery_id}/confirm-pickup", response_model=schemas.PickupConfirmResponse)
+def confirm_pickup(delivery_id: int, db: Session = Depends(database.get_db)):
+    """User confirms they have collected their item from the open panel."""
+    delivery = db.query(models.Delivery).filter(models.Delivery.id == delivery_id).first()
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+
+    if delivery.status not in ["panel_open", "arrived", "waiting_pickup"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot confirm pickup for delivery in status '{delivery.status}'."
+        )
+
+    delivery.status = "completed"
+    delivery.completed_at = datetime.utcnow()
+    create_log(db, "delivery", f"Pickup confirmed by user for delivery {delivery_id}")
+    db.commit()
+    db.refresh(delivery)
+    broadcast_delivery_update(delivery, db)
+
+    from app.main import manager
+    import asyncio, json as _json
+    cmd = _json.dumps({"type": "command", "action": "pickup_confirmed", "delivery_id": delivery_id})
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(manager.send_to_bridge(cmd))
+    except RuntimeError:
+        pass
+
+    return {"ok": True, "delivery_id": delivery_id, "status": "completed"}
+
+
+@router.post("/robot/command")
+def send_robot_command(cmd: schemas.RobotCommand, db: Session = Depends(database.get_db), current_user: models.User = Depends(dependencies.get_admin_user)):
+    """Admin sends a direct command to the robot (return to base, unlock panel, emergency stop)."""
+    from app.main import manager
+    import asyncio, json as _json
+
+    valid_actions = ["return_to_base", "unlock_panel", "emergency_stop", "lock_panel"]
+    if cmd.action not in valid_actions:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {cmd.action}")
+
+    payload = _json.dumps({"type": "command", "action": cmd.action, "panel_id": cmd.panel_id})
+    create_log(db, "system", f"Admin command sent: {cmd.action} (panel={cmd.panel_id})", user_id=current_user.id)
+
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(manager.send_to_bridge(payload))
+    except RuntimeError:
+        pass
+
+    return {"ok": True, "action": cmd.action, "sent": True}
+
 # ─── LOGS ────────────────────────────────────────────────────────────────────
+
 
 @router.get("/logs", response_model=List[schemas.Log])
 def get_logs(limit: int = 100, event_type: Optional[str] = None, db: Session = Depends(database.get_db), _=Depends(dependencies.get_admin_user)):
