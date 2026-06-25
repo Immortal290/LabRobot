@@ -1,0 +1,61 @@
+# ─────────────────────────────────────────────────
+#  mobile_robot — General Robot Parameters
+#  ROS 2 Jazzy | Ubuntu 24.04
+# ─────────────────────────────────────────────────
+
+mobile_robot:
+  ros__parameters:
+
+    # Geometry
+    base_width:  0.610      # m  (2 ft)
+    base_length: 0.610      # m  (2 ft)
+    body_height: 0.457      # m  (1.5 ft cabinet)
+    wheel_radius: 0.075     # m
+    wheel_separation: 0.660 # m (center-to-center)
+
+    # Motion limits
+    max_linear_velocity:  0.8   # m/s
+    max_angular_velocity: 1.5   # rad/s
+
+    # Frames
+    base_frame:   base_footprint
+    odom_frame:   odom
+    map_frame:    map
+    lidar_frame:  laser_frame
+    camera_frame: camera_optical_frame
+
+    # Topics
+    cmd_vel_topic:   /cmd_vel
+    scan_topic:      /scan
+    odom_topic:      /odom
+    imu_topic:       /imu/data
+
+# ─────────────────────────────────────────────────
+#  robot_state_publisher
+# ─────────────────────────────────────────────────
+robot_state_publisher:
+  ros__parameters:
+    publish_frequency: 50.0
+    use_tf_static: true
+    ignore_timestamp: false
+    frame_prefix: ""
+
+# ─────────────────────────────────────────────────
+#  joint_state_publisher_gui (display only, no sim)
+# ─────────────────────────────────────────────────
+joint_state_publisher:
+  ros__parameters:
+    rate: 50
+    publish_default_positions: true
+    publish_default_velocities: true
+    publish_default_efforts: false
+
+# ─────────────────────────────────────────────────
+#  teleop_twist_keyboard (reference values)
+# ─────────────────────────────────────────────────
+teleop:
+  ros__parameters:
+    linear_speed:  0.5
+    angular_speed: 1.0
+    linear_step:   0.1
+    angular_step:  0.1

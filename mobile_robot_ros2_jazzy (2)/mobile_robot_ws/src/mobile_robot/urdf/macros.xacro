@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<robot name="mobile_robot_macros" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ===== COMMON CONSTANTS ===== -->
+  <xacro:property name="pi" value="3.14159265358979"/>
+
+  <!-- ===== UTILITY: zero-mass dummy link for sensors ===== -->
+  <xacro:macro name="dummy_inertial">
+    <inertial>
+      <mass value="0.001"/>
+      <inertia ixx="0.0001" ixy="0" ixz="0"
+               iyy="0.0001" iyz="0"
+               izz="0.0001"/>
+    </inertial>
+  </xacro:macro>
+
+</robot>

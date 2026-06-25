@@ -1,0 +1,23 @@
+# ── ROS 2 workspace build artefacts ──────────────────────────────────────
+mobile_robot_ros2_jazzy/mobile_robot_ws/build/
+mobile_robot_ros2_jazzy/mobile_robot_ws/install/
+mobile_robot_ros2_jazzy/mobile_robot_ws/log/
+
+# ── Python cache ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# ── Large zip archives ────────────────────────────────────────────────────
+*.zip
+
+# ── OS / editor clutter ───────────────────────────────────────────────────
+.DS_Store
+*.swp
+*.swo
+.vscode/settings.json
+
+# ── Arduino build output ──────────────────────────────────────────────────
+*.hex
+*.elf
+*.map

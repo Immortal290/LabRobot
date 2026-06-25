@@ -1,0 +1,73 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  slam_toolbox_real.yaml  —  SLAM Toolbox for real hardware
+#  Uses /odometry/filtered (EKF fused output) instead of raw /odom
+#  ROS 2 Jazzy | AURA Mobile Robot
+#
+#  MAP SAVING:
+#    Auto-save:   every map_update_interval seconds while mapping
+#    Manual save: ros2 service call /slam_toolbox/save_map \
+#                   slam_toolbox/srv/SaveMap "{name: {data: 'lab_map'}}"
+#    Serialize:   ros2 service call /slam_toolbox/serialize_map \
+#                   slam_toolbox/srv/SerializePoseGraph \
+#                   "{filename: {data: '/path/to/lab_map'}}"
+# ═══════════════════════════════════════════════════════════════════════════
+
+slam_toolbox:
+  ros__parameters:
+    # ── SLAM mode ─────────────────────────────────────────────────────────
+    mode: mapping   # 'mapping' or 'localization'
+
+    # Real hardware — NOT simulation time
+    use_sim_time: false
+
+    # ── TF frames ─────────────────────────────────────────────────────────
+    odom_frame:  odom
+    map_frame:   map
+    base_frame:  base_footprint
+
+    # ── Sensor input ──────────────────────────────────────────────────────
+    # SLAM Toolbox uses /scan + TF (odom→base_footprint provided by EKF)
+    scan_topic: /scan
+
+    # ── TF / timing ───────────────────────────────────────────────────────
+    tf_buffer_duration:  30.0
+    transform_timeout:    0.5
+    map_update_interval:  5.0   # seconds between map serialisations (auto-save)
+
+    # ── Map resolution ────────────────────────────────────────────────────
+    resolution:       0.05    # 5 cm per cell
+    max_laser_range: 12.0     # YDLIDAR X2/X4 max range (m)
+
+    # ── Map serialization / auto-save ────────────────────────────────────
+    # SLAM Toolbox will serialize (save) the pose graph to this file path
+    # every map_update_interval seconds as the robot moves.
+    # The .posegraph and .data files are saved alongside the .yaml/.pgm map.
+    map_file_name: /home/lab/Desktop/AURA/mobile_robot_ros2_jazzy/mobile_robot_ws/src/mobile_robot/maps/lab_map
+    map_start_at_dock: true
+    map_start_pose: [0.0, 0.0, 0.0]
+
+    # ── Minimum travel to trigger scan match ──────────────────────────────
+    minimum_travel_distance: 0.2
+    minimum_travel_heading:  0.2
+
+    # ── Loop closure ──────────────────────────────────────────────────────
+    loop_search_max_linear_distance: 4.0
+    loop_search_max_angular_distance: 0.349   # 20°
+    do_loop_closing: true
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine:   0.45
+
+    # ── Correlation / scan matching ───────────────────────────────────────
+    correlation_search_space_dimension:        0.5
+    correlation_search_space_resolution:       0.01
+    correlation_search_space_smear_deviation:  0.1
+    correlation_search_max_linear_search_window:  0.8
+    correlation_search_max_angular_search_window: 0.5
+    use_scan_matching:             true
+    use_scan_bagging:              false
+    minimum_score_for_scan_matching: 0.6
+
+    # ── Visualization ─────────────────────────────────────────────────────
+    publish_pose_graph: true

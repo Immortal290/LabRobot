@@ -1,0 +1,82 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+#  slam_toolbox.yaml  —  SLAM Toolbox configuration for AURA Rover
+#  ROS 2 Jazzy | Real Hardware (YDLIDAR X4)
+#
+#  ROLE IN PIPELINE:
+#    /scan            [sensor_msgs/LaserScan]  — YDLIDAR X4
+#    TF: odom → base_footprint               — robot_localization EKF
+#         ↓
+#    async_slam_toolbox_node
+#         ↓
+#    /map             [nav_msgs/OccupancyGrid]
+#    TF: map → odom
+#
+#  HOW SLAM TOOLBOX BUILDS THE MAP:
+#    1. Receives laser scans via /scan
+#    2. Uses TF (odom→base_footprint→lidar_link) to transform scans to odom frame
+#    3. Performs scan-to-map matching (Karto SLAM) to refine pose
+#    4. Publishes occupancy grid and map→odom TF correction
+#    5. Detects loop closures by comparing current scan to stored keyframes
+#    6. Graph-based optimisation corrects accumulated drift on loop closure
+# ═══════════════════════════════════════════════════════════════════════════════
+
+slam_toolbox:
+  ros__parameters:
+
+    # ── Operating mode ──────────────────────────────────────────────────────
+    mode: mapping          # 'mapping' for building new map | 'localization' for using saved map
+
+    # ── Timing ──────────────────────────────────────────────────────────────
+    use_sim_time: false    # real hardware
+
+    # ── TF frame names ───────────────────────────────────────────────────────
+    odom_frame:  odom
+    map_frame:   map
+    base_frame:  base_footprint
+
+    # ── Sensor input ─────────────────────────────────────────────────────────
+    # SLAM Toolbox reads /scan and uses TF to project scans into the world frame.
+    # The EKF provides the odom→base_footprint TF chain.
+    scan_topic:  /scan
+
+    # ── TF / timing tolerances ───────────────────────────────────────────────
+    tf_buffer_duration:   30.0    # seconds to buffer TF history
+    transform_timeout:    0.5     # seconds to wait for TF lookup
+    map_update_interval:  5.0     # seconds between map file saves (if using serialisation)
+
+    # ── Map parameters ───────────────────────────────────────────────────────
+    resolution: 0.05              # 5 cm per occupancy grid cell
+    max_laser_range: 10.0         # YDLIDAR X4 max range = 10 m
+
+    # ── Keyframe thresholds ──────────────────────────────────────────────────
+    # A new keyframe is added when the robot has moved this far since last keyframe
+    minimum_travel_distance: 0.2  # metres
+    minimum_travel_heading:  0.2  # radians (~11.5°)
+
+    # ── Loop closure ────────────────────────────────────────────────────────
+    do_loop_closing: true
+    loop_match_minimum_chain_size:        10
+    loop_match_maximum_variance_coarse:   3.0
+    loop_match_minimum_response_coarse:   0.35
+    loop_match_minimum_response_fine:     0.45
+    loop_search_max_linear_distance:      4.0    # metres
+    loop_search_max_angular_distance:     0.349  # radians (≈ 20°)
+
+    # ── Scan matching (Karto) ────────────────────────────────────────────────
+    use_scan_matching:   true
+    use_scan_bagging:    false
+    minimum_score_for_scan_matching: 0.6
+
+    # Correlation search window for fine scan matching
+    correlation_search_space_dimension:      0.5   # metres
+    correlation_search_space_resolution:     0.01  # metres
+    correlation_search_space_smear_deviation: 0.1
+    correlation_search_max_linear_search_window:  0.8
+    correlation_search_max_angular_search_window: 0.5
+
+    # ── Visualisation ────────────────────────────────────────────────────────
+    publish_pose_graph: true      # publish pose graph for RViz inspection
+
+    # ── Map initialisation ───────────────────────────────────────────────────
+    map_start_pose:    [0.0, 0.0, 0.0]
+    map_start_at_dock: true       # robot starts at origin facing +X

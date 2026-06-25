@@ -1,0 +1,129 @@
+{
+  "folders": [
+    {
+      "name": "mobile_robot_ws",
+      "path": "."
+    }
+  ],
+  "settings": {
+    // ── Python ─────────────────────────────────────────────────
+    "python.defaultInterpreterPath": "/usr/bin/python3",
+    "python.analysis.extraPaths": [
+      "/opt/ros/jazzy/lib/python3/dist-packages",
+      "/opt/ros/jazzy/local/lib/python3.12/dist-packages"
+    ],
+
+    // ── C++ / ROS include paths ─────────────────────────────────
+    "C_Cpp.default.includePath": [
+      "/opt/ros/jazzy/include/**",
+      "${workspaceFolder}/src/**"
+    ],
+    "C_Cpp.default.compilerPath": "/usr/bin/g++",
+    "C_Cpp.default.cppStandard": "c++17",
+    "C_Cpp.default.intelliSenseMode": "gcc-x64",
+
+    // ── File associations ───────────────────────────────────────
+    "files.associations": {
+      "*.xacro": "xml",
+      "*.urdf":  "xml",
+      "*.sdf":   "xml",
+      "*.yaml":  "yaml",
+      "*.launch.py": "python"
+    },
+
+    // ── Editor ─────────────────────────────────────────────────
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true,
+
+    // ── XML formatting ──────────────────────────────────────────
+    "[xml]": {
+      "editor.defaultFormatter": "redhat.vscode-xml",
+      "editor.tabSize": 2
+    },
+
+    // ── Python formatting ───────────────────────────────────────
+    "[python]": {
+      "editor.defaultFormatter": "ms-python.black-formatter",
+      "editor.formatOnSave": true
+    },
+
+    // ── Terminal ────────────────────────────────────────────────
+    "terminal.integrated.env.linux": {
+      "ROS_DISTRO": "jazzy",
+      "ROS_DOMAIN_ID": "0"
+    },
+    "terminal.integrated.defaultProfile.linux": "bash",
+
+    // ── ROS extension settings ──────────────────────────────────
+    "ros.distro": "jazzy"
+  },
+
+  "extensions": {
+    "recommendations": [
+      "ms-python.python",
+      "ms-python.black-formatter",
+      "ms-vscode.cpptools",
+      "ms-vscode.cmake-tools",
+      "redhat.vscode-xml",
+      "redhat.vscode-yaml",
+      "ms-iot.vscode-ros",
+      "twxs.cmake",
+      "timonwong.shellcheck"
+    ]
+  },
+
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "🔨 Build workspace",
+        "type": "shell",
+        "command": "cd ${workspaceFolder} && source /opt/ros/jazzy/setup.bash && colcon build --symlink-install",
+        "group": {"kind": "build", "isDefault": true},
+        "presentation": {"reveal": "always", "panel": "new"}
+      },
+      {
+        "label": "🧹 Clean workspace",
+        "type": "shell",
+        "command": "cd ${workspaceFolder} && rm -rf build install log",
+        "presentation": {"reveal": "always", "panel": "new"}
+      },
+      {
+        "label": "🚀 Launch Display (RViz only)",
+        "type": "shell",
+        "command": "source /opt/ros/jazzy/setup.bash && source ${workspaceFolder}/install/setup.bash && ros2 launch mobile_robot display.launch.py",
+        "presentation": {"reveal": "always", "panel": "new"}
+      },
+      {
+        "label": "🌍 Launch Gazebo Simulation",
+        "type": "shell",
+        "command": "source /opt/ros/jazzy/setup.bash && source ${workspaceFolder}/install/setup.bash && ros2 launch mobile_robot gazebo.launch.py",
+        "presentation": {"reveal": "always", "panel": "new"}
+      },
+      {
+        "label": "🎮 Launch Teleop",
+        "type": "shell",
+        "command": "source /opt/ros/jazzy/setup.bash && source ${workspaceFolder}/install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap cmd_vel:=/cmd_vel",
+        "presentation": {"reveal": "always", "panel": "new"}
+      },
+      {
+        "label": "📋 List Topics",
+        "type": "shell",
+        "command": "source /opt/ros/jazzy/setup.bash && source ${workspaceFolder}/install/setup.bash && ros2 topic list",
+        "presentation": {"reveal": "always", "panel": "new"}
+      },
+      {
+        "label": "📡 Echo /scan",
+        "type": "shell",
+        "command": "source /opt/ros/jazzy/setup.bash && source ${workspaceFolder}/install/setup.bash && ros2 topic echo /scan",
+        "presentation": {"reveal": "always", "panel": "new"}
+      }
+    ]
+  },
+
+  "launch": {
+    "version": "0.2.0",
+    "configurations": []
+  }
+}
