@@ -148,7 +148,7 @@ def delete_user(user_id: int, db: Session = Depends(database.get_db), current_us
 # ─── INVENTORY ────────────────────────────────────────────────────────────────
 
 @router.get("/inventory", response_model=List[schemas.Inventory])
-def list_inventory(db: Session = Depends(database.get_db), _=Depends(dependencies.get_current_active_user)):
+def list_inventory(db: Session = Depends(database.get_db)):
     return db.query(models.Inventory).all()
 
 @router.post("/inventory", response_model=schemas.Inventory)
@@ -281,10 +281,13 @@ def broadcast_delivery_update(db_delivery, db):
             "username": username,
             "item_id": db_delivery.item_id,
             "item_name": item_name,
+            "rack_id": db_delivery.rack_id,
             "destination": db_delivery.destination,
             "pc_no": db_delivery.pc_no,
             "location": db_delivery.location,
             "status": db_delivery.status,
+            "otp": db_delivery.otp,
+            "phone_number": db_delivery.phone_number,
             "created_at": db_delivery.created_at.isoformat() if db_delivery.created_at else None,
             "completed_at": db_delivery.completed_at.isoformat() if db_delivery.completed_at else None
         }
@@ -310,6 +313,7 @@ def create_delivery(delivery: schemas.DeliveryCreate, db: Session = Depends(data
         raise HTTPException(status_code=404, detail="Item not found")
     if item.quantity <= 0:
         raise HTTPException(status_code=400, detail="Item out of stock")
+    
     db_delivery = models.Delivery(
         user_id=current_user.id, 
         item_id=delivery.item_id, 
@@ -317,14 +321,16 @@ def create_delivery(delivery: schemas.DeliveryCreate, db: Session = Depends(data
         pc_no=delivery.pc_no,
         location=delivery.location,
         rack_id=delivery.rack_id, 
-        status="pending"
+        status="pending_approval",
+        otp=None,
+        phone_number=delivery.phone_number
     )
     item.quantity -= 1
     if item.quantity == 0:
         item.available = False
     item.last_transaction = datetime.utcnow()
     db.add(db_delivery)
-    create_log(db, "delivery", f"Delivery requested for item '{item.name}' to {delivery.destination}", user_id=current_user.id)
+    create_log(db, "delivery", f"Delivery requested for item '{item.name}' to {delivery.destination} (Awaiting Admin Approval)", user_id=current_user.id)
     db.commit()
     db.refresh(db_delivery)
     
@@ -370,32 +376,80 @@ def create_quick_delivery(payload: schemas.QuickDeliveryCreate, db: Session = De
         pc_no=payload.pc_no,
         location=payload.location,
         rack_id=payload.rack_id,
-        status="pending"
+        status="pending_approval",
+        otp=None,
+        phone_number=payload.phone_number
     )
     item.quantity -= 1
     if item.quantity == 0:
         item.available = False
     item.last_transaction = datetime.utcnow()
     db.add(db_delivery)
-    create_log(db, "delivery", f"Quick mobile request by {payload.username} (PC {payload.pc_no}) for '{item.name}' to {payload.location}", user_id=user.id)
+    create_log(db, "delivery", f"Quick mobile request by {payload.username} (PC {payload.pc_no}) for '{item.name}' to {payload.location} (Awaiting Admin Approval)", user_id=user.id)
     db.commit()
     db.refresh(db_delivery)
     
     broadcast_delivery_update(db_delivery, db)
     return db_delivery
 
+def trigger_sms_notification(delivery, db: Session):
+    if delivery.phone_number:
+        # Get item name
+        item = db.query(models.Inventory).filter(models.Inventory.id == delivery.item_id).first()
+        item_name = item.name if item else "Equipment"
+        
+        # 1. Print a large, highlighted console box (visible in docker compose terminal)
+        print(f"\n======================================================================")
+        print(f"📱 [REALTIME SMS DISPATCH] To: {delivery.phone_number}")
+        print(f"💬 MESSAGE: 🤖 Lab Buddy: Your retrieval OTP is {delivery.otp} for item '{item_name}'.")
+        print(f"======================================================================\n")
+        
+        # 2. Add to logs database so it appears in the Admin logs
+        create_log(db, "system", f"📱 Realtime SMS sent to {delivery.phone_number} (OTP: {delivery.otp})")
+        
+        # 3. Broadcast SMS event to all UI clients via WebSocket in real-time
+        from app.main import manager
+        import asyncio, json
+        
+        sms_dict = {
+            "type": "sms_notification",
+            "phone_number": delivery.phone_number,
+            "delivery_id": delivery.id,
+            "message": f"🤖 Lab Buddy: Your retrieval OTP is {delivery.otp}. Enter it on the robot screen to unlock Locker 0{delivery.rack_id}."
+        }
+        
+        broadcast_task = manager.broadcast_to_ui(json.dumps(sms_dict))
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(broadcast_task)
+        except RuntimeError:
+            pass
+
 @router.put("/deliveries/{delivery_id}", response_model=schemas.Delivery)
 def update_delivery_status(delivery_id: int, update: schemas.DeliveryUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(dependencies.get_current_active_user)):
     delivery = db.query(models.Delivery).filter(models.Delivery.id == delivery_id).first()
     if not delivery:
         raise HTTPException(status_code=404, detail="Delivery not found")
+    
+    old_status = delivery.status
     delivery.status = update.status
+    
+    if update.status == "task_assigned" and old_status == "pending_approval":
+        import random
+        delivery.otp = f"{random.randint(1000, 9999)}"
+        create_log(db, "delivery", f"Delivery {delivery_id} approved. OTP generated.", user_id=current_user.id)
+
     if update.status == "completed":
         delivery.completed_at = datetime.utcnow()
+        
     create_log(db, "delivery", f"Delivery {delivery_id} status → {update.status}", user_id=current_user.id)
     db.commit()
     db.refresh(delivery)
     
+    # Trigger SMS notification if it has arrived
+    if update.status == "arrived" and old_status != "arrived":
+        trigger_sms_notification(delivery, db)
+        
     broadcast_delivery_update(delivery, db)
     return delivery
 
@@ -459,6 +513,43 @@ def confirm_pickup(delivery_id: int, db: Session = Depends(database.get_db)):
         pass
 
     return {"ok": True, "delivery_id": delivery_id, "status": "completed"}
+
+
+@router.post("/deliveries/{delivery_id}/verify-otp")
+async def verify_delivery_otp(delivery_id: int, payload: schemas.DeliveryOTPVerify, db: Session = Depends(database.get_db)):
+    delivery = db.query(models.Delivery).filter(models.Delivery.id == delivery_id).first()
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Delivery not found")
+    
+    if delivery.otp != payload.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP code")
+    
+    # Update delivery status to panel_open
+    delivery.status = "panel_open"
+    
+    # Unlock the rack associated with the delivery
+    if delivery.rack_id:
+        rack = db.query(models.Rack).filter(models.Rack.id == delivery.rack_id).first()
+        if rack:
+            rack.lock_status = "unlocked"
+            
+        # Send WebSocket command to hardware to physically open the servo
+        from app.main import manager
+        import json
+        await manager.send_to_bridge(json.dumps({
+            "type": "command", 
+            "action": "unlock_rack", 
+            "rack_id": delivery.rack_id
+        }))
+            
+    create_log(db, "delivery", f"Delivery {delivery_id} OTP verified. Panel open.", user_id=delivery.user_id)
+    db.commit()
+    db.refresh(delivery)
+    
+    # Broadcast status change to WebSocket clients
+    broadcast_delivery_update(delivery, db)
+    
+    return {"ok": True, "message": "OTP verified successfully. Locker unlocked."}
 
 
 @router.post("/robot/command")

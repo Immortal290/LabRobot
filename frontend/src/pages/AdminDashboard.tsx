@@ -1,10 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { GlassPanel } from '../components/GlassPanel';
-import { Battery, Cpu, Map as MapIcon, Package, LogOut, Navigation, Settings, Activity, Edit2, Trash2, Smartphone, QrCode, Copy, Check, ExternalLink, User } from 'lucide-react';
+import { WorkflowTimeline } from '../components/WorkflowTimeline';
+import { RobotStateCard } from '../components/RobotStateCard';
+import { RobotDisplay } from '../components/RobotDisplay';
+import {
+  Battery, Cpu, Map as MapIcon, Package, LogOut, Navigation, Settings,
+  Activity, Edit2, Trash2, Smartphone, QrCode, Copy, Check, ExternalLink,
+  User, Target, CheckCircle, XCircle, Home, Zap,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { configApi, inventoryApi, deliveriesApi, usersApi } from '../services/api';
+import { configApi, inventoryApi, deliveriesApi, usersApi, robotCommands } from '../services/api';
+import {
+  RobotState,
+  mapTelemetryToState,
+  getRobotStateConfig,
+} from '../lib/robotStateLibrary';
 import QRCode from 'qrcode';
 
 export const AdminDashboard: React.FC = () => {
@@ -15,6 +27,10 @@ export const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('live_map');
   const [config, setConfig] = useState<any>({ max_speed: 1.0, safe_mode: true, maintenance_mode: false, telemetry_frequency: 1000, voice_assistant: true, auto_return_to_base: true, collision_margin: 0.5, cargo_temp_target: 20.0 });
   const wsRef = useRef<WebSocket | null>(null);
+
+  // ── Robot State (derived from telemetry) ──────────────────
+  const [robotState, setRobotState] = useState<RobotState>(RobotState.IDLE);
+  const [manualRobotOverride, setManualRobotOverride] = useState(false);
 
   // Inventory State
   const [inventoryItems, setInventoryItems] = useState<any[]>([]);
@@ -192,6 +208,11 @@ export const AdminDashboard: React.FC = () => {
             mission: data.mission,
             rack_status: data.rack_status || ["locked", "locked", "locked", "locked"]
           });
+          // Derive robot state for emotion display
+          if (!manualRobotOverride) {
+            const derived = mapTelemetryToState(data.status, data.mission, data.battery);
+            setRobotState(derived);
+          }
           if (data.log) {
             const logType: 'info' | 'success' | 'warning' = data.log.includes('warning') ? 'warning' : data.log.includes('Obstacle') ? 'warning' : data.log.includes('confirmed') ? 'success' : 'info';
             const newLog = {
@@ -288,6 +309,46 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  // ── Admin override actions ────────────────────────────────
+  const handleAdminForceComplete = async (deliveryId: number) => {
+    try {
+      await deliveriesApi.updateDeliveryStatus(deliveryId, 'completed');
+      robotCommands.forceComplete(wsRef.current);
+      loadDeliveries();
+      setLogs(prev => [{ time: new Date().toLocaleTimeString(), event: `Admin forced completion of delivery #${deliveryId}`, type: 'success' as const }, ...prev].slice(0, 15));
+    } catch (err) { alert('Force complete failed.'); }
+  };
+
+  const handleAdminCancelTask = async (deliveryId: number) => {
+    if (!window.confirm('Cancel this delivery task?')) return;
+    try {
+      await deliveriesApi.cancelDelivery(deliveryId);
+      robotCommands.cancelTask(wsRef.current);
+      loadDeliveries();
+      setLogs(prev => [{ time: new Date().toLocaleTimeString(), event: `Admin cancelled delivery #${deliveryId}`, type: 'warning' as const }, ...prev].slice(0, 15));
+    } catch (err) { alert('Cancel failed.'); }
+  };
+
+  const handleAdminReturnToBase = () => {
+    robotCommands.returnToBase(wsRef.current);
+    setLogs(prev => [{ time: new Date().toLocaleTimeString(), event: 'Admin issued: Return to Base command', type: 'info' as const }, ...prev].slice(0, 15));
+  };
+
+  const handleAdminUnlockPanel = async (rackId: number) => {
+    try {
+      const { rackApi } = await import('../services/api');
+      await rackApi.unlockRack(rackId);
+      robotCommands.unlockPanel(wsRef.current, rackId);
+      setLogs(prev => [{ time: new Date().toLocaleTimeString(), event: `Admin manually unlocked panel R-${rackId}`, type: 'success' as const }, ...prev].slice(0, 15));
+    } catch (err) { alert('Panel unlock failed.'); }
+  };
+
+  const stateConfig = getRobotStateConfig(robotState);
+  const pendingDeliveries = deliveries.filter(d => d.status === 'pending' || d.status === 'pending_approval');
+  const activeDeliveries = deliveries.filter(d =>
+    ['in_progress','validating','task_assigned','arrived','panel_open','waiting_pickup','pickup_confirmed'].includes(d.status)
+  );
+
   return (
     <div className="dashboard-container">
       {/* Sidebar */}
@@ -303,6 +364,19 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <button
+            className="btn"
+            style={{ background: activeTab === 'active_mission' ? 'rgba(16,185,129,0.15)' : 'transparent', color: activeTab === 'active_mission' ? '#fff' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '16px', border: activeTab === 'active_mission' ? '1px solid var(--accent-green)' : '1px solid transparent', boxShadow: activeTab === 'active_mission' ? '0 0 15px rgba(16,185,129,0.3)' : 'none', position: 'relative' }}
+            onClick={() => { setActiveTab('active_mission'); loadDeliveries(); }}
+          >
+            <Target size={20} color={activeTab === 'active_mission' ? 'var(--accent-green)' : 'var(--text-secondary)'} />
+            <span>Active Mission</span>
+            {activeDeliveries.length > 0 && (
+              <span style={{ marginLeft: 'auto', minWidth: '20px', height: '20px', borderRadius: '10px', background: 'var(--accent-green)', color: '#000', fontSize: '0.7rem', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px' }}>
+                {activeDeliveries.length}
+              </span>
+            )}
+          </button>
           <button 
             className="btn" 
             style={{ background: activeTab === 'live_map' ? 'rgba(37, 99, 235, 0.2)' : 'transparent', color: activeTab === 'live_map' ? '#fff' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', padding: '16px', border: activeTab === 'live_map' ? '1px solid var(--accent-blue)' : '1px solid transparent', boxShadow: activeTab === 'live_map' ? '0 0 15px var(--accent-blue-glow)' : 'none' }}
@@ -379,6 +453,58 @@ export const AdminDashboard: React.FC = () => {
         <AnimatePresence mode="wait">
           {activeTab === 'live_map' && (
             <motion.div key="live_map" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.4 }}>
+
+              {/* Robot State + Active Task Quick Row */}
+              <div style={{ display: 'flex', gap: '16px', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                {/* Robot Emotion Display */}
+                <div style={{ flex: '0 0 200px' }}>
+                  <div style={{
+                    height: '200px', position: 'relative',
+                    background: '#000', borderRadius: '20px', overflow: 'hidden',
+                    border: `2px solid ${stateConfig.color}`,
+                    boxShadow: `0 0 20px ${stateConfig.glowColor}`,
+                    transition: 'all 0.5s ease',
+                  }}>
+                    <RobotDisplay state={robotState} showLabel height="200px" showStatus={false}
+                      onVideoEnd={() => setRobotState(RobotState.IDLE)} />
+                    {/* Manual override mini-buttons */}
+                    <div style={{ position: 'absolute', bottom: '8px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '4px' }}>
+                      {[RobotState.IDLE, RobotState.NAVIGATING, RobotState.ARRIVED, RobotState.TASK_SUCCESS, RobotState.TASK_FAILED].map(s => (
+                        <button key={s} onClick={() => { setRobotState(s); setManualRobotOverride(true); }}
+                          title={s}
+                          style={{ width: '8px', height: '8px', borderRadius: '50%', background: robotState === s ? getRobotStateConfig(s).color : 'rgba(255,255,255,0.2)', border: 'none', cursor: 'pointer', padding: 0 }} />
+                      ))}
+                    </div>
+                    {manualRobotOverride && (
+                      <button onClick={() => setManualRobotOverride(false)}
+                        style={{ position: 'absolute', top: '8px', right: '8px', background: 'rgba(245,158,11,0.9)', border: 'none', borderRadius: '8px', color: '#000', fontSize: '0.65rem', fontWeight: 800, cursor: 'pointer', padding: '3px 6px' }}>
+                        MANUAL
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Active task quick-card + controls */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <RobotStateCard state={robotState} battery={telemetry.battery} mission={telemetry.mission} showBattery />
+                  {/* Queue summary */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: '12px', padding: '10px 14px' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>Pending</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#f59e0b', fontFamily: 'var(--font-mono)' }}>{pendingDeliveries.length}</div>
+                    </div>
+                    <div style={{ flex: 1, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '12px', padding: '10px 14px' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '1px' }}>Active</div>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent-green)', fontFamily: 'var(--font-mono)' }}>{activeDeliveries.length}</div>
+                    </div>
+                    <button onClick={handleAdminReturnToBase} className="btn" style={{ flex: 1, background: 'rgba(6,182,212,0.1)', color: 'var(--accent-cyan)', border: '1px solid rgba(6,182,212,0.25)', fontSize: '0.82rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', padding: '10px' }}>
+                      <Home size={16} />
+                      <span>Return to Base</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid-cols-4" style={{ marginBottom: '2rem' }}>
                 <GlassPanel className="hover-scale">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '12px' }}>
@@ -495,6 +621,103 @@ export const AdminDashboard: React.FC = () => {
                   </div>
                 </GlassPanel>
               </div>
+            </motion.div>
+          )}
+
+          {/* ─── ACTIVE MISSION TAB ─────────────────────────────────────────── */}
+          {activeTab === 'active_mission' && (
+            <motion.div key="active_mission" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.4 }}>
+
+              {activeDeliveries.length === 0 && pendingDeliveries.length === 0 ? (
+                <GlassPanel style={{ minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '3rem', opacity: 0.3 }}>🤖</div>
+                  <h3 style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>No Active Missions</h3>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Robot is idle and available for new requests.</p>
+                  <RobotStateCard state={robotState} battery={telemetry.battery} mission={telemetry.mission} />
+                </GlassPanel>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+                  {/* Robot state widget */}
+                  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: '0 0 220px', height: '220px', position: 'relative', background: '#000', borderRadius: '20px', overflow: 'hidden', border: `2px solid ${stateConfig.color}`, boxShadow: `0 0 24px ${stateConfig.glowColor}`, transition: 'all 0.5s ease' }}>
+                      <RobotDisplay state={robotState} showLabel height="220px" showStatus onVideoEnd={() => setRobotState(RobotState.IDLE)} />
+                    </div>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <RobotStateCard state={robotState} battery={telemetry.battery} mission={telemetry.mission} showBattery />
+                      {/* Admin command buttons */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <button onClick={handleAdminReturnToBase} className="btn" style={{ background: 'rgba(6,182,212,0.12)', color: 'var(--accent-cyan)', border: '1px solid rgba(6,182,212,0.3)', gap: '6px', fontSize: '0.88rem' }}>
+                          <Home size={15} /> Return to Base
+                        </button>
+                        {activeDeliveries[0] && (
+                          <>
+                            <button onClick={() => handleAdminForceComplete(activeDeliveries[0].id)} className="btn btn-success" style={{ fontSize: '0.88rem', gap: '6px' }}>
+                              <CheckCircle size={15} /> Force Complete
+                            </button>
+                            <button onClick={() => handleAdminCancelTask(activeDeliveries[0].id)} className="btn btn-danger" style={{ fontSize: '0.88rem', gap: '6px', gridColumn: '1 / -1' }}>
+                              <XCircle size={15} /> Cancel Current Task
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Active deliveries with full workflow timeline */}
+                  {[...activeDeliveries, ...pendingDeliveries].map(delivery => (
+                    <GlassPanel key={delivery.id} style={{ border: `1px solid ${['failed','cancelled'].includes(delivery.status) ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.15)'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                            <span className="mono" style={{ color: 'var(--accent-cyan)', fontWeight: 700 }}>#DEL-{delivery.id}</span>
+                            <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 700,
+                              background: delivery.status === 'completed' ? 'rgba(16,185,129,0.15)' : 'rgba(37,99,235,0.15)',
+                              color: delivery.status === 'completed' ? 'var(--accent-green)' : 'var(--accent-blue)',
+                              border: `1px solid ${delivery.status === 'completed' ? 'rgba(16,185,129,0.3)' : 'rgba(37,99,235,0.3)'}`,
+                            }}>
+                              {delivery.status.toUpperCase().replace(/_/g, ' ')}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                            User: <strong style={{ color: '#fff' }}>{users.find((u: any) => u.id === delivery.user_id)?.username || `#${delivery.user_id}`}</strong>
+                            {' · '}
+                            Dest: <strong style={{ color: 'var(--accent-cyan)' }}>{delivery.location || delivery.destination}</strong>
+                            {delivery.rack_id && <>{' · '}Panel: <strong style={{ color: 'var(--accent-purple)' }}>R-{delivery.rack_id}</strong></>}
+                          </div>
+                        </div>
+                        {/* Per-delivery controls */}
+                        <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                          {delivery.status === 'pending_approval' && (
+                            <button onClick={() => handleUpdateDeliveryStatus(delivery.id, 'task_assigned')} className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(37,99,235,0.12)', color: 'var(--accent-blue)', border: '1px solid rgba(37,99,235,0.25)', gap: '5px' }}>
+                              <CheckCircle size={13} /> Approve
+                            </button>
+                          )}
+                          {delivery.rack_id && delivery.status !== 'pending_approval' && (
+                            <button onClick={() => handleAdminUnlockPanel(delivery.rack_id)} className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(139,92,246,0.12)', color: 'var(--accent-purple)', border: '1px solid rgba(139,92,246,0.25)', gap: '5px' }}>
+                              <Zap size={13} /> Open Panel
+                            </button>
+                          )}
+                          {delivery.status !== 'completed' && delivery.status !== 'cancelled' && delivery.status !== 'pending_approval' && (
+                            <button onClick={() => handleAdminForceComplete(delivery.id)} className="btn" style={{ padding: '6px 12px', fontSize: '0.8rem', background: 'rgba(16,185,129,0.12)', color: 'var(--accent-green)', border: '1px solid rgba(16,185,129,0.25)', gap: '5px' }}>
+                              <CheckCircle size={13} /> Complete
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Full workflow timeline for each active delivery */}
+                      <WorkflowTimeline
+                        deliveryStatus={delivery.status}
+                        robotState={robotState}
+                        arrivedAt={delivery.arrived_at}
+                        compact={false}
+                        showLabels
+                      />
+                    </GlassPanel>
+                  ))}
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -894,6 +1117,7 @@ export const AdminDashboard: React.FC = () => {
                           <th style={{ padding: '12px', fontWeight: 500 }}>Item</th>
                           <th style={{ padding: '12px', fontWeight: 500 }}>Location</th>
                           <th style={{ padding: '12px', fontWeight: 500 }}>Rack</th>
+                          <th style={{ padding: '12px', fontWeight: 500 }}>Progress</th>
                           <th style={{ padding: '12px', fontWeight: 500 }}>Status</th>
                           <th style={{ padding: '12px', fontWeight: 500, textAlign: 'right' }}>Actions</th>
                         </tr>
@@ -910,6 +1134,14 @@ export const AdminDashboard: React.FC = () => {
                               <td style={{ padding: '16px 12px', color: 'var(--accent-cyan)' }}>{deliveryItem ? deliveryItem.name : `Item ID: ${delivery.item_id}`}</td>
                               <td style={{ padding: '16px 12px', color: 'var(--text-secondary)' }}>{delivery.location || delivery.destination}</td>
                               <td style={{ padding: '16px 12px' }} className="mono">{delivery.rack_id || 'Auto'}</td>
+                              <td style={{ padding: '16px 12px' }}>
+                                <WorkflowTimeline
+                                  deliveryStatus={delivery.status}
+                                  robotState={activeDeliveries.some((d: any) => d.id === delivery.id) ? robotState : RobotState.IDLE}
+                                  compact
+                                  showLabels={false}
+                                />
+                              </td>
                               <td style={{ padding: '16px 12px' }}>
                                 <span style={{ 
                                   padding: '4px 10px', 
@@ -946,11 +1178,11 @@ export const AdminDashboard: React.FC = () => {
                                       Approve
                                     </button>
                                     <button 
-                                      onClick={() => handleUpdateDeliveryStatus(delivery.id, 'failed')} 
+                                      onClick={() => handleAdminCancelTask(delivery.id)} 
                                       className="btn btn-danger" 
                                       style={{ padding: '6px 10px', fontSize: '0.85rem' }}
                                     >
-                                      Reject
+                                      Cancel
                                     </button>
                                   </>
                                 )}

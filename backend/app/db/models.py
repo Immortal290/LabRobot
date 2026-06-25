@@ -60,6 +60,8 @@ class Delivery(Base):
     # Status values: pending, validating, assigned, navigating, arrived,
     # panel_open, pickup_timeout, completed, returning, cancelled, failed
     status = Column(String)
+    otp = Column(String, nullable=True)
+    phone_number = Column(String, nullable=True)
     eta_seconds = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
