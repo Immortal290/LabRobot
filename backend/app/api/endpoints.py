@@ -644,3 +644,156 @@ def update_system_config(update: schemas.SystemConfigUpdate, db: Session = Depen
         pass # No event loop running (e.g. in test or sync context)
 
     return config
+
+
+# ─── BARCODE LOCATIONS ────────────────────────────────────────────────────────
+
+class BarcodeLocationSchema(schemas.BaseModel):
+    barcode_value: str
+    department:    Optional[str] = None
+    room:          Optional[str] = None
+    nav_goal_name: Optional[str] = None
+    goal_x:        Optional[float] = 0.0
+    goal_y:        Optional[float] = 0.0
+    goal_theta:    Optional[float] = 0.0
+    description:   Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+# Import BaseModel for inline schema
+from pydantic import BaseModel as PydanticBaseModel
+
+class BarcodeIn(PydanticBaseModel):
+    barcode_value: str
+    department:    Optional[str] = None
+    room:          Optional[str] = None
+    nav_goal_name: Optional[str] = None
+    goal_x:        float = 0.0
+    goal_y:        float = 0.0
+    goal_theta:    float = 0.0
+    description:   Optional[str] = None
+
+@router.get("/barcodes")
+def list_barcodes(db: Session = Depends(database.get_db),
+                  _=Depends(dependencies.get_current_active_user)):
+    return db.query(models.BarcodeLocation).all()
+
+@router.get("/barcodes/lookup")
+def lookup_barcode(value: str, db: Session = Depends(database.get_db)):
+    """Look up a barcode — called by the kiosk when a barcode is scanned."""
+    bc = db.query(models.BarcodeLocation).filter(
+        models.BarcodeLocation.barcode_value == value
+    ).first()
+    if not bc:
+        raise HTTPException(status_code=404, detail=f"Barcode '{value}' not registered")
+    return bc
+
+@router.post("/barcodes")
+def create_barcode(data: BarcodeIn, db: Session = Depends(database.get_db),
+                   _=Depends(dependencies.get_admin_user)):
+    if db.query(models.BarcodeLocation).filter(
+            models.BarcodeLocation.barcode_value == data.barcode_value).first():
+        raise HTTPException(status_code=400, detail="Barcode already exists")
+    bc = models.BarcodeLocation(**data.model_dump())
+    db.add(bc)
+    db.commit()
+    db.refresh(bc)
+    create_log(db, "system", f"Barcode registered: {data.barcode_value} → {data.room}")
+    return bc
+
+@router.put("/barcodes/{barcode_id}")
+def update_barcode(barcode_id: int, data: BarcodeIn,
+                   db: Session = Depends(database.get_db),
+                   _=Depends(dependencies.get_admin_user)):
+    bc = db.query(models.BarcodeLocation).filter(
+        models.BarcodeLocation.id == barcode_id).first()
+    if not bc:
+        raise HTTPException(status_code=404, detail="Barcode not found")
+    for k, v in data.model_dump(exclude_none=True).items():
+        setattr(bc, k, v)
+    db.commit()
+    db.refresh(bc)
+    return bc
+
+@router.delete("/barcodes/{barcode_id}")
+def delete_barcode(barcode_id: int, db: Session = Depends(database.get_db),
+                   _=Depends(dependencies.get_admin_user)):
+    bc = db.query(models.BarcodeLocation).filter(
+        models.BarcodeLocation.id == barcode_id).first()
+    if not bc:
+        raise HTTPException(status_code=404, detail="Barcode not found")
+    db.delete(bc)
+    db.commit()
+    return {"ok": True}
+
+
+# ─── OTP AUDIT LOGS ───────────────────────────────────────────────────────────
+
+@router.get("/otp-logs")
+def list_otp_logs(limit: int = 50, db: Session = Depends(database.get_db),
+                  _=Depends(dependencies.get_admin_user)):
+    return db.query(models.OTPLog)\
+             .order_by(models.OTPLog.created_at.desc())\
+             .limit(limit).all()
+
+
+# ─── ROBOT STATUS SNAPSHOT ────────────────────────────────────────────────────
+
+class TelemetrySnapshotIn(PydanticBaseModel):
+    state:           Optional[str]   = "idle"
+    mission:         Optional[str]   = None
+    pos_x:           Optional[float] = 0.0
+    pos_y:           Optional[float] = 0.0
+    heading:         Optional[float] = 0.0
+    battery_percent: Optional[float] = 100.0
+    cpu_temp:        Optional[float] = 0.0
+    cpu_usage:       Optional[float] = 0.0
+    ram_usage:       Optional[float] = 0.0
+    arduino_ok:      Optional[bool]  = False
+    lidar_ok:        Optional[bool]  = False
+    active_delivery: Optional[int]   = None
+
+@router.post("/robot/snapshot")
+def save_robot_snapshot(data: TelemetrySnapshotIn,
+                        db: Session = Depends(database.get_db)):
+    """Persist a telemetry snapshot — called by the ROS2 bridge periodically."""
+    snap = models.RobotStatusSnapshot(**data.model_dump())
+    db.add(snap)
+    db.commit()
+    return {"ok": True}
+
+@router.get("/robot/history")
+def robot_history(limit: int = 100, db: Session = Depends(database.get_db),
+                  _=Depends(dependencies.get_admin_user)):
+    return db.query(models.RobotStatusSnapshot)\
+             .order_by(models.RobotStatusSnapshot.timestamp.desc())\
+             .limit(limit).all()
+
+
+# ─── NAVIGATION LOG CREATE ────────────────────────────────────────────────────
+
+class NavLogIn(PydanticBaseModel):
+    start_pos_x:          float
+    start_pos_y:          float
+    dest_pos_x:           float
+    dest_pos_y:           float
+    route_taken:          Optional[str] = "[]"
+    travel_time:          float = 0.0
+    obstacles_encountered: int = 0
+    status:               str = "success"
+
+@router.post("/navigation-logs")
+def create_nav_log(data: NavLogIn, db: Session = Depends(database.get_db)):
+    """Persist a navigation run — called by the ROS2 delivery manager."""
+    log = models.NavigationLog(**data.model_dump())
+    db.add(log)
+    db.commit()
+    return {"ok": True}
+
+@router.get("/navigation-logs")
+def list_nav_logs(limit: int = 50, db: Session = Depends(database.get_db),
+                  _=Depends(dependencies.get_admin_user)):
+    return db.query(models.NavigationLog)\
+             .order_by(models.NavigationLog.timestamp.desc())\
+             .limit(limit).all()

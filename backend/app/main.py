@@ -29,7 +29,69 @@ with SessionLocal() as db:
         db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS auto_return_to_base BOOLEAN DEFAULT TRUE;"))
         db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS collision_margin FLOAT DEFAULT 0.5;"))
         db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS cargo_temp_target FLOAT DEFAULT 20.0;"))
+
+        # ── New tables (AURA feature set) ──────────────────────────────────
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS barcode_locations (
+                id            SERIAL PRIMARY KEY,
+                barcode_value TEXT UNIQUE NOT NULL,
+                department    TEXT,
+                room          TEXT,
+                nav_goal_name TEXT,
+                goal_x        FLOAT DEFAULT 0.0,
+                goal_y        FLOAT DEFAULT 0.0,
+                goal_theta    FLOAT DEFAULT 0.0,
+                description   TEXT,
+                created_at    TIMESTAMP DEFAULT NOW()
+            );
+        """))
+        # Seed demo barcode entries
+        db.execute(text("""
+            INSERT INTO barcode_locations (barcode_value, department, room, nav_goal_name, goal_x, goal_y)
+            VALUES
+              ('LAB-101-PHYS', 'Physics',       'Lab 101', 'lab_101', 3.5, 1.2),
+              ('LAB-202-CHEM', 'Chemistry',     'Lab 202', 'lab_202', 5.1, 4.8),
+              ('LAB-302-BIO',  'Biology',       'Lab 302', 'lab_302', 2.3, 7.6),
+              ('LAB-401-CS',   'Computer Sci.', 'Lab 401', 'lab_401', 8.0, 3.0)
+            ON CONFLICT (barcode_value) DO NOTHING;
+        """))
+
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS otp_logs (
+                id           SERIAL PRIMARY KEY,
+                delivery_id  INT REFERENCES deliveries(id) ON DELETE SET NULL,
+                user_id      INT REFERENCES users(id) ON DELETE SET NULL,
+                phone_number TEXT,
+                otp_code     TEXT NOT NULL,
+                action       TEXT,
+                verified     BOOLEAN DEFAULT FALSE,
+                attempts     INT DEFAULT 0,
+                created_at   TIMESTAMP DEFAULT NOW(),
+                verified_at  TIMESTAMP
+            );
+        """))
+
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS robot_status_snapshots (
+                id              SERIAL PRIMARY KEY,
+                state           TEXT DEFAULT 'idle',
+                mission         TEXT,
+                pos_x           FLOAT DEFAULT 0.0,
+                pos_y           FLOAT DEFAULT 0.0,
+                heading         FLOAT DEFAULT 0.0,
+                battery_percent FLOAT DEFAULT 100.0,
+                cpu_temp        FLOAT DEFAULT 0.0,
+                cpu_usage       FLOAT DEFAULT 0.0,
+                ram_usage       FLOAT DEFAULT 0.0,
+                arduino_ok      BOOLEAN DEFAULT FALSE,
+                lidar_ok        BOOLEAN DEFAULT FALSE,
+                active_delivery INT,
+                timestamp       TIMESTAMP DEFAULT NOW()
+            );
+        """))
+
         db.commit()
+        logger.info("Database migrations applied successfully.")
     except Exception as e:
         logger.error(f"Migration error: {e}")
         db.rollback()

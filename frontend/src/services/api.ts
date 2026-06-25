@@ -133,6 +133,7 @@ export const usersApi = {
   })
 };
 
+
 /** Robot control commands sent via WebSocket to the bridge. */
 export const robotCommands = {
   /**
@@ -151,4 +152,42 @@ export const robotCommands = {
   unlockPanel:    (ws: WebSocket | null, rackId: number) => robotCommands.send(ws, 'unlock_panel', rackId),
   cancelTask:     (ws: WebSocket | null) => robotCommands.send(ws, 'cancel_task'),
   forceComplete:  (ws: WebSocket | null) => robotCommands.send(ws, 'force_complete'),
+};
+
+/** Barcode location management — admin only for create/update/delete. */
+export const barcodeApi = {
+  list:   () => fetchWithAuth('/barcodes'),
+  lookup: (value: string) => fetchWithAuth(`/barcodes/lookup?value=${encodeURIComponent(value)}`),
+  create: (data: any) => fetchWithAuth('/barcodes', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  update: (id: number, data: any) => fetchWithAuth(`/barcodes/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  delete: (id: number) => fetchWithAuth(`/barcodes/${id}`, { method: 'DELETE' }),
+};
+
+/** Robot telemetry history — read-only, admin only. */
+export const robotHistoryApi = {
+  getHistory:  (limit = 100) => fetchWithAuth(`/robot/history?limit=${limit}`),
+  saveSnapshot: (data: any) => fetchWithAuth('/robot/snapshot', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+};
+
+/** Navigation log — admin only. */
+export const navLogApi = {
+  list:   (limit = 50) => fetchWithAuth(`/navigation-logs?limit=${limit}`),
+  create: (data: any)  => fetchWithAuth('/navigation-logs', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+};
+
+/** OTP audit log — admin only. */
+export const otpLogApi = {
+  list: (limit = 50) => fetchWithAuth(`/otp-logs?limit=${limit}`),
 };
