@@ -183,9 +183,9 @@ export const RobotDisplayPage: React.FC = () => {
             setCurrentState(derived);
             
             // Check for delivery arrival retrieval popup
-            if (derived === RobotState.TASK_SUCCESS && !showArrivalModal) {
+            if ((derived === RobotState.ARRIVED || derived === RobotState.TASK_SUCCESS) && !showArrivalModal) {
               // Find the active delivery that matches this arrival
-              const active = deliveries.find(d => d.status === 'in_progress' || d.status === 'pending');
+              const active = deliveries.find(d => d.status === 'in_progress' || d.status === 'pending' || d.status === 'arrived');
               if (active) {
                 setArrivedDelivery(active);
                 setShowArrivalModal(true);
@@ -284,7 +284,9 @@ export const RobotDisplayPage: React.FC = () => {
     } else if (char === 'BACK') {
       setPinCode(prev => prev.slice(0, -1));
     } else {
-      if (pinCode.length < 8) {
+      const isOTP = deliveries.some(d => d.rack_id === selectedRackId && (d.status === 'in_progress' || d.status === 'pending' || d.status === 'arrived'));
+      const maxLength = isOTP ? 4 : 8;
+      if (pinCode.length < maxLength) {
         setPinCode(prev => prev + char);
       }
     }
@@ -294,36 +296,64 @@ export const RobotDisplayPage: React.FC = () => {
   const submitPasscode = async () => {
     if (!selectedRackId) return;
     
-    addLog(`[AUTH] Verifying access passcode for Rack ${selectedRackId}...`);
-    try {
-      // 1. Verify credentials using backend service
-      const response = await rackApi.verifyAccess(selectedRackId, pinCode);
-      
-      if (response.ok) {
-        setAuthSuccess(true);
-        addLog(`[AUTH] Verification successful. Unlocking Rack ${selectedRackId}...`);
+    // Find active delivery for this rack
+    const matchingDelivery = deliveries.find(
+      d => d.rack_id === selectedRackId && 
+      (d.status === 'in_progress' || d.status === 'pending' || d.status === 'arrived')
+    );
+
+    if (matchingDelivery) {
+      addLog(`[AUTH] Verifying delivery OTP for Rack ${selectedRackId}...`);
+      try {
+        const response = await deliveriesApi.verifyDeliveryOTP(matchingDelivery.id, pinCode);
         
-        // 2. Perform physical lock unlock
-        await rackApi.unlockRack(selectedRackId);
-        triggerToast(`Rack ${selectedRackId} Unlocked!`, 'success');
-        
-        // Match arrived delivery to complete it
-        const matchingDelivery = deliveries.find(d => d.rack_id === selectedRackId && (d.status === 'in_progress' || d.status === 'pending'));
-        if (matchingDelivery) {
-          await deliveriesApi.updateDeliveryStatus(matchingDelivery.id, 'completed');
-          addLog(`[DELIVERY] Delivery #${matchingDelivery.id} marked COMPLETED.`);
+        if (response.ok) {
+          setAuthSuccess(true);
+          addLog(`[AUTH] OTP verification successful. Unlocking Rack ${selectedRackId}...`);
+          
+          // Perform physical lock unlock
+          await rackApi.unlockRack(selectedRackId);
+          triggerToast(`Rack ${selectedRackId} Unlocked!`, 'success');
+          
+          // Clear variables and close modals
+          setTimeout(() => {
+            setShowAuthModal(false);
+            setShowArrivalModal(false);
+            setPinCode('');
+            setAuthSuccess(false);
+          }, 3000);
         }
-        
-        // Clear variables and close modals
-        setTimeout(() => {
-          setShowAuthModal(false);
-          setShowArrivalModal(false);
-        }, 3000);
+      } catch (err: any) {
+        setAuthError(err.message || 'Incorrect OTP code. Access Denied.');
+        addLog(`[AUTH] OTP verification failed for Rack ${selectedRackId}: ${err.message || 'Incorrect OTP'}`);
+        triggerToast('Incorrect OTP', 'error');
       }
-    } catch (err: any) {
-      setAuthError(err.message || 'Incorrect passcode. Access Denied.');
-      addLog(`[AUTH] Access denied for Rack ${selectedRackId}: ${err.message || 'Verification failure'}`);
-      triggerToast('Access Denied', 'error');
+    } else {
+      addLog(`[AUTH] Verifying access passcode for Rack ${selectedRackId}...`);
+      try {
+        // 1. Verify credentials using backend service
+        const response = await rackApi.verifyAccess(selectedRackId, pinCode);
+        
+        if (response.ok) {
+          setAuthSuccess(true);
+          addLog(`[AUTH] Verification successful. Unlocking Rack ${selectedRackId}...`);
+          
+          // 2. Perform physical lock unlock
+          await rackApi.unlockRack(selectedRackId);
+          triggerToast(`Rack ${selectedRackId} Unlocked!`, 'success');
+          
+          // Clear variables and close modals
+          setTimeout(() => {
+            setShowAuthModal(false);
+            setPinCode('');
+            setAuthSuccess(false);
+          }, 3000);
+        }
+      } catch (err: any) {
+        setAuthError(err.message || 'Incorrect passcode. Access Denied.');
+        addLog(`[AUTH] Access denied for Rack ${selectedRackId}: ${err.message || 'Verification failure'}`);
+        triggerToast('Access Denied', 'error');
+      }
     }
   };
 
@@ -984,7 +1014,7 @@ export const RobotDisplayPage: React.FC = () => {
                   style={{ flex: 1, padding: '12px' }}
                   onClick={() => handleRackUnlockRequest(arrivedDelivery.rack_id || 1)}
                 >
-                  🔑 Authenticate to Unlock
+                  🔑 Enter OTP to Unlock
                 </button>
                 <button
                   className="btn"
@@ -1039,10 +1069,14 @@ export const RobotDisplayPage: React.FC = () => {
               {/* Header */}
               <div style={{ textAlign: 'center' }}>
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#fff' }}>
-                  Locker 0{selectedRackId} Security Access
+                  {deliveries.some(d => d.rack_id === selectedRackId && (d.status === 'in_progress' || d.status === 'pending' || d.status === 'arrived'))
+                    ? `Locker 0${selectedRackId} OTP Verification`
+                    : `Locker 0${selectedRackId} Security Access`}
                 </h3>
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                  Enter student password (default: <code>123456</code>) or staff login PIN
+                  {deliveries.some(d => d.rack_id === selectedRackId && (d.status === 'in_progress' || d.status === 'pending' || d.status === 'arrived'))
+                    ? "Enter the 4-digit OTP shown on your mobile device"
+                    : "Enter student password (default: 123456) or staff login PIN"}
                 </p>
               </div>
 

@@ -58,6 +58,8 @@ class Delivery(Base):
     pc_no = Column(String, nullable=True)
     location = Column(String, nullable=True)
     status = Column(String) # pending, in_progress, completed, failed
+    otp = Column(String, nullable=True)
+    phone_number = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 

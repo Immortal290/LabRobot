@@ -80,15 +80,31 @@ export const configApi = {
 
 export const deliveriesApi = {
   getDeliveries: () => fetchWithAuth('/deliveries'),
+  getDeliveryById: (deliveryId: number) => fetchWithAuth(`/deliveries/${deliveryId}`),
   updateDeliveryStatus: (deliveryId: number, status: string) => fetchWithAuth(`/deliveries/${deliveryId}`, {
     method: 'PUT',
     body: JSON.stringify({ status }),
   }),
-  requestQuickItem: (payload: { username: string, pc_no: string, item_id: number, location: string, rack_id?: number | null }) => fetchWithAuth('/quick-delivery', {
+  requestQuickItem: (payload: { username: string, pc_no: string, item_id: number, location: string, rack_id?: number | null, phone_number?: string | null }) => fetchWithAuth('/quick-delivery', {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
   getQuickDeliveries: (username: string) => fetchWithAuth(`/quick-deliveries?username=${encodeURIComponent(username)}`),
+  /** Cancel a pending delivery before the robot is dispatched. */
+  cancelDelivery: (deliveryId: number) => fetchWithAuth(`/deliveries/${deliveryId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status: 'cancelled' }),
+  }),
+  /** Confirm that the user has collected the item from the open panel. */
+  confirmPickup: (deliveryId: number) => fetchWithAuth(`/deliveries/${deliveryId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status: 'pickup_confirmed' }),
+  }),
+  /** Verify the 4-digit OTP code to unlock the locker compartment. */
+  verifyDeliveryOTP: (deliveryId: number, otp: string) => fetchWithAuth(`/deliveries/${deliveryId}/verify-otp`, {
+    method: 'POST',
+    body: JSON.stringify({ otp }),
+  }),
 };
 
 export const usersApi = {
@@ -100,4 +116,24 @@ export const usersApi = {
   deleteUser: (id: number) => fetchWithAuth(`/users/${id}`, {
     method: 'DELETE',
   })
+};
+
+/** Robot control commands sent via WebSocket to the bridge. */
+export const robotCommands = {
+  /**
+   * Sends a command via an open WebSocket connection.
+   * Pass the WebSocket ref from the calling component.
+   */
+  send: (ws: WebSocket | null, action: string, param?: any) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'command', action, param }));
+      return true;
+    }
+    return false;
+  },
+  returnToBase:   (ws: WebSocket | null) => robotCommands.send(ws, 'return_to_base'),
+  eStop:          (ws: WebSocket | null, active: boolean) => robotCommands.send(ws, 'estop', active),
+  unlockPanel:    (ws: WebSocket | null, rackId: number) => robotCommands.send(ws, 'unlock_panel', rackId),
+  cancelTask:     (ws: WebSocket | null) => robotCommands.send(ws, 'cancel_task'),
+  forceComplete:  (ws: WebSocket | null) => robotCommands.send(ws, 'force_complete'),
 };

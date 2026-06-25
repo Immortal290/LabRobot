@@ -21,6 +21,8 @@ with SessionLocal() as db:
     try:
         db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS pc_no VARCHAR;"))
         db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS location VARCHAR;"))
+        db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS otp VARCHAR;"))
+        db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS phone_number VARCHAR;"))
         db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS voice_assistant BOOLEAN DEFAULT TRUE;"))
         db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS auto_return_to_base BOOLEAN DEFAULT TRUE;"))
         db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS collision_margin FLOAT DEFAULT 0.5;"))

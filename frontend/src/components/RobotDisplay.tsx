@@ -34,7 +34,7 @@ import { getRobotStateConfig, RobotState } from '../lib/robotStateLibrary';
 import type { RobotStateConfig } from '../lib/robotStateLibrary';
 
 // ─── Icon map: state → SVG path data ─────────────────────────────────────────
-const STATE_ICONS: Record<RobotState, string> = {
+const STATE_ICONS: Partial<Record<RobotState, string>> = {
   [RobotState.IDLE]:         'M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zm0 14a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm1-4H11V8h2v4z',
   [RobotState.NAVIGATING]:   'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
   [RobotState.TASK_SUCCESS]: 'M20 6L9 17l-5-5',

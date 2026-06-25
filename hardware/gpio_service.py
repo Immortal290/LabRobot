@@ -1,20 +1,24 @@
 import time
 import os
-import requests
 import json
+import asyncio
+import websockets
+import serial
 from datetime import datetime
 
-# Attempt to import gpiozero, fallback to mock if not on Raspberry Pi or no pin factory found
+# Attempt to import gpiozero for direct Pi GPIO buttons
 try:
-    from gpiozero import Button, OutputDevice
+    from gpiozero import Button
     import gpiozero.devices
     gpiozero.devices.Device.ensure_pin_factory()
     ON_PI = True
 except Exception:
-    print("Warning: gpiozero not found, no pin factory found, or not running on Raspberry Pi. Using mock GPIO.")
+    print("Warning: gpiozero not found or not running on Raspberry Pi. Using mock GPIO for buttons.")
     ON_PI = False
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000/api/v1")
+WS_URL = os.getenv("WS_URL", "ws://localhost:8000/ws/bridge")
+ARDUINO_PORT = os.getenv("ARDUINO_PORT", "/dev/ttyUSB0") # Default serial port for Arduino Nano
+ARDUINO_BAUD = 9600
 
 # Mock GPIO Classes for development on Windows
 class MockButton:
@@ -24,20 +28,10 @@ class MockButton:
 
     def press(self):
         if self.when_pressed:
-            self.when_pressed()
-
-class MockOutput:
-    def __init__(self, pin):
-        self.pin = pin
-        self.is_active = False
-
-    def on(self):
-        self.is_active = True
-        print(f"Mock Pin {self.pin} ON")
-
-    def off(self):
-        self.is_active = False
-        print(f"Mock Pin {self.pin} OFF")
+            if asyncio.iscoroutinefunction(self.when_pressed):
+                asyncio.create_task(self.when_pressed())
+            else:
+                self.when_pressed()
 
 # Hardware Configuration
 BUTTON_PINS = {
@@ -50,82 +44,119 @@ BUTTON_PINS = {
     'btn_refresh': 5
 }
 
-LOCK_PINS = {
-    'lock_1': 6,
-    'lock_2': 13,
-    'lock_3': 19,
-    'lock_4': 26
-}
-
 buttons = {}
-locks = {}
+
+# Serial connection for Arduino Nano
+arduino_serial = None
 
 def init_gpio():
+    global arduino_serial
     for name, pin in BUTTON_PINS.items():
         if ON_PI:
             buttons[name] = Button(pin, pull_up=True, bounce_time=0.1)
         else:
             buttons[name] = MockButton(pin)
             
-    for name, pin in LOCK_PINS.items():
-        if ON_PI:
-            locks[name] = OutputDevice(pin, active_high=False, initial_value=False)
-        else:
-            locks[name] = MockOutput(pin)
-
-def send_event(event_type, description, user_id=None):
+    # Initialize Arduino Serial connection
     try:
-        # In a real scenario, you'd use a dedicated hardware endpoint
+        if os.name != 'nt': # Avoid failing instantly on Windows if port not found
+            arduino_serial = serial.Serial(ARDUINO_PORT, ARDUINO_BAUD, timeout=1)
+            print(f"Connected to Arduino Nano on {ARDUINO_PORT} at {ARDUINO_BAUD} baud.")
+        else:
+            print("Running on Windows, mocking Arduino Serial connection.")
+            arduino_serial = None
+    except Exception as e:
+        print(f"Failed to connect to Arduino on {ARDUINO_PORT}: {e}")
+        arduino_serial = None
+
+async def send_event(websocket, event_type, description):
+    try:
+        if websocket and websocket.open:
+            await websocket.send(json.dumps({
+                "type": "hardware_event",
+                "event_type": event_type,
+                "description": description
+            }))
         print(f"Hardware Event: {event_type} - {description}")
     except Exception as e:
         print(f"Error sending event: {e}")
 
-def handle_rack_button(rack_num):
-    print(f"Button for Rack {rack_num} pressed!")
-    # Open the lock
-    lock_name = f"lock_{rack_num}"
-    if lock_name in locks:
-        locks[lock_name].on()
-        send_event("hardware", f"Rack {rack_num} unlocked via hardware button")
-        # Auto-lock after 5 seconds
-        time.sleep(5)
-        locks[lock_name].off()
-        send_event("hardware", f"Rack {rack_num} auto-locked")
+async def send_arduino_command(cmd):
+    global arduino_serial
+    if arduino_serial and arduino_serial.is_open:
+        try:
+            # Run blocking serial write in executor
+            await asyncio.to_thread(arduino_serial.write, f"{cmd}\n".encode())
+            print(f"Sent to Arduino: {cmd}")
+        except Exception as e:
+            print(f"Failed to send to Arduino: {e}")
+    else:
+        print(f"[Mock Arduino] Sent command: {cmd}")
 
-def handle_estop():
-    print("EMERGENCY STOP BUTTON PRESSED!")
-    send_event("emergency", "Hardware E-Stop activated")
+async def open_flap(rack_num, websocket=None):
+    print(f"Opening flap for Rack {rack_num}...")
+    # Send command to Arduino to open the servo for this rack
+    await send_arduino_command(f"OPEN:{rack_num}")
+    
+    if websocket:
+        await send_event(websocket, "hardware", f"Rack {rack_num} flap opened")
+    
+    # Wait 5 seconds
+    await asyncio.sleep(5) 
+    
+    print(f"Closing flap for Rack {rack_num}...")
+    # Send command to Arduino to close the servo
+    await send_arduino_command(f"CLOSE:{rack_num}")
+    
+    if websocket:
+        await send_event(websocket, "hardware", f"Rack {rack_num} flap closed (auto-lock)")
 
-def handle_home():
-    print("HOME BUTTON PRESSED!")
-    send_event("hardware", "Return to home requested")
+def setup_callbacks(websocket):
+    def create_handler(rack_num):
+        return lambda: asyncio.create_task(open_flap(rack_num, websocket))
 
-def handle_refresh():
-    print("REFRESH BUTTON PRESSED!")
-    send_event("hardware", "UI refresh requested")
+    buttons['btn_rack_1'].when_pressed = create_handler(1)
+    buttons['btn_rack_2'].when_pressed = create_handler(2)
+    buttons['btn_rack_3'].when_pressed = create_handler(3)
+    buttons['btn_rack_4'].when_pressed = create_handler(4)
+    buttons['btn_estop'].when_pressed = lambda: asyncio.create_task(send_event(websocket, "emergency", "Hardware E-Stop activated"))
+    buttons['btn_home'].when_pressed = lambda: asyncio.create_task(send_event(websocket, "hardware", "Return to home requested"))
+    buttons['btn_refresh'].when_pressed = lambda: asyncio.create_task(send_event(websocket, "hardware", "UI refresh requested"))
 
-def setup_callbacks():
-    buttons['btn_rack_1'].when_pressed = lambda: handle_rack_button(1)
-    buttons['btn_rack_2'].when_pressed = lambda: handle_rack_button(2)
-    buttons['btn_rack_3'].when_pressed = lambda: handle_rack_button(3)
-    buttons['btn_rack_4'].when_pressed = lambda: handle_rack_button(4)
-    buttons['btn_estop'].when_pressed = handle_estop
-    buttons['btn_home'].when_pressed = handle_home
-    buttons['btn_refresh'].when_pressed = handle_refresh
+async def main():
+    print("Initializing Lab Buddy Hardware Service (Arduino Serial Mode)...")
+    init_gpio()
+    
+    while True:
+        try:
+            print(f"Connecting to backend websocket at {WS_URL}...")
+            async with websockets.connect(WS_URL) as websocket:
+                print("Connected to backend!")
+                setup_callbacks(websocket)
+                
+                # Mock button press for testing
+                if not ON_PI:
+                    asyncio.create_task(asyncio.sleep(2)).add_done_callback(lambda _: buttons['btn_rack_2'].press())
+                
+                # Listen for commands from the backend
+                while True:
+                    data = await websocket.recv()
+                    try:
+                        payload = json.loads(data)
+                        if payload.get("type") == "command" and payload.get("action") == "unlock_rack":
+                            rack_id = payload.get("rack_id")
+                            if rack_id:
+                                asyncio.create_task(open_flap(rack_id, websocket))
+                    except json.JSONDecodeError:
+                        pass
+        except Exception as e:
+            print(f"Websocket error: {e}. Reconnecting in 5 seconds...")
+            await asyncio.sleep(5)
 
 if __name__ == "__main__":
-    print("Initializing Lab Buddy Hardware Service...")
-    init_gpio()
-    setup_callbacks()
-    
-    print("Hardware Service Running. Press Ctrl+C to exit.")
-    if not ON_PI:
-        print("Running in mock mode. Simulating button presses...")
-        time.sleep(2)
-        buttons['btn_rack_2'].press()
-    
     try:
-        while True:
-            time.sleep(1)
+        asyncio.run(main())
     except KeyboardInterrupt:
         print("Shutting down Hardware Service...")
+        if arduino_serial and arduino_serial.is_open:
+            arduino_serial.close()

@@ -368,3 +368,54 @@ p, span, div {
 .mono {
   font-family: var(--font-mono);
 }
+
+/* ── Lab Buddy Specific Utilities ── */
+
+.workflow-step {
+  transition: all 0.3s ease;
+}
+
+.workflow-step-active {
+  animation: pulse-glow 2s infinite;
+}
+
+.workflow-step-done {
+  opacity: 0.8;
+}
+
+.robot-state-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  transition: all 0.3s ease;
+}
+
+.timeout-warning {
+  animation: slide-up 0.3s ease-out, pulse-glow 2s infinite alternate;
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+}
+
+.queue-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.queue-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+
+.eta-chip {
+  background: rgba(37, 99, 235, 0.85);
+  backdrop-filter: blur(8px);
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
