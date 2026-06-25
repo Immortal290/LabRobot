@@ -18,25 +18,26 @@ import math
 from std_msgs.msg import String
 from geometry_msgs.msg import Twist
 
-SERIAL_PORT = '/dev/ttyUSB0'
-SERIAL_BAUD = 115200
-
-# Motor mapping: cmd_vel → PWM
-# Adjust WHEEL_BASE and MAX_LINEAR to match your robot
-WHEEL_BASE   = 0.660   # m
-MAX_LINEAR   = 0.5     # m/s  → maps to PWM 255
-MAX_ANGULAR  = 1.5     # rad/s → maps to each motor ± MAX_LINEAR
-MAX_PWM      = 200     # limit to avoid excessive current (< 255)
+SERIAL_PORT  = '/dev/arduino'   # permanent symlink — never changes
+SERIAL_BAUD  = 115200
 
 
 class EncoderSerialBridge(Node):
     def __init__(self):
         super().__init__('encoder_serial_bridge')
 
+        # ── Parameters (overridable from launch file) ─────────────────────
         self.declare_parameter('serial_port', SERIAL_PORT)
         self.declare_parameter('serial_baud', SERIAL_BAUD)
-        port = self.get_parameter('serial_port').value
-        baud = self.get_parameter('serial_baud').value
+        self.declare_parameter('wheel_base',  0.660)   # metres
+        self.declare_parameter('max_linear',  0.5)     # m/s → PWM 200
+        self.declare_parameter('max_pwm',     200)     # hard cap
+
+        port           = self.get_parameter('serial_port').value
+        baud           = self.get_parameter('serial_baud').value
+        self.wheel_base = self.get_parameter('wheel_base').value
+        self.max_linear = self.get_parameter('max_linear').value
+        self.max_pwm    = self.get_parameter('max_pwm').value
 
         sensor_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -49,7 +50,10 @@ class EncoderSerialBridge(Node):
 
         try:
             self.ser = serial.Serial(port, baud, timeout=0.05)
-            self.get_logger().info(f'Serial bridge: {port} @ {baud}')
+            self.get_logger().info(
+                f'[encoder_serial_bridge] {port} @ {baud} | '
+                f'wheel_base={self.wheel_base} m | max_pwm={self.max_pwm}'
+            )
         except serial.SerialException as e:
             self.get_logger().error(f'Cannot open {port}: {e}')
             raise SystemExit(1)
@@ -83,17 +87,16 @@ class EncoderSerialBridge(Node):
         omega = msg.angular.z
 
         # Differential drive wheel speeds (m/s)
-        v_left  = vx - (omega * WHEEL_BASE / 2.0)
-        v_right = vx + (omega * WHEEL_BASE / 2.0)
+        v_left  = vx - (omega * self.wheel_base / 2.0)
+        v_right = vx + (omega * self.wheel_base / 2.0)
 
-        # Normalise to PWM range
-        scale    = MAX_PWM / max(abs(v_left), abs(v_right), MAX_LINEAR)
-        l_pwm    = int(v_left  * scale)
-        r_pwm    = int(v_right * scale)
-        l_pwm    = max(-MAX_PWM, min(MAX_PWM, l_pwm))
-        r_pwm    = max(-MAX_PWM, min(MAX_PWM, r_pwm))
+        # Normalise to PWM range — guard against division by zero when stopped
+        max_v = max(abs(v_left), abs(v_right), self.max_linear, 1e-6)
+        scale = self.max_pwm / max_v
+        l_pwm = int(max(-self.max_pwm, min(self.max_pwm, v_left  * scale)))
+        r_pwm = int(max(-self.max_pwm, min(self.max_pwm, v_right * scale)))
 
-        cmd_str  = f'CMD {l_pwm} {r_pwm}\n'
+        cmd_str = f'CMD {l_pwm} {r_pwm}\n'
         try:
             self.ser.write(cmd_str.encode('ascii'))
         except serial.SerialException as e:

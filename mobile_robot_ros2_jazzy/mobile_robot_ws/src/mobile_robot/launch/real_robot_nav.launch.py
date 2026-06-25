@@ -37,6 +37,8 @@ from launch.actions import (
     LogInfo,
     OpaqueFunction,
     TimerAction,
+    EmitEvent,
+    RegisterEventHandler,
 )
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -45,8 +47,12 @@ from launch.substitutions import (
     PathJoinSubstitution,
     PythonExpression,
 )
-from launch_ros.actions import Node
+from launch_ros.actions import Node, LifecycleNode
 from launch_ros.substitutions import FindPackageShare
+from launch_ros.event_handlers import OnStateTransition
+from launch_ros.events.lifecycle import ChangeState
+from lifecycle_msgs.msg import Transition
+from launch.events import matches_action
 
 
 def generate_launch_description():
@@ -54,10 +60,10 @@ def generate_launch_description():
 
     # ── Launch arguments ──────────────────────────────────────────────────
     args = [
-        DeclareLaunchArgument('serial_port',     default_value='/dev/ttyUSB1',
-                              description='Serial port for Arduino Nano (encoder + motors)'),
-        DeclareLaunchArgument('lidar_port',      default_value='/dev/ttyUSB0',
-                              description='Serial port for YDLIDAR'),
+        DeclareLaunchArgument('serial_port',      default_value='/dev/arduino',
+                              description='Serial port for Arduino Nano — uses permanent symlink /dev/arduino'),
+        DeclareLaunchArgument('lidar_port',       default_value='/dev/ydlidar',
+                              description='Serial port for YDLIDAR — uses permanent symlink /dev/ydlidar'),
         DeclareLaunchArgument('serial_baud',     default_value='115200'),
         DeclareLaunchArgument('wheel_radius',    default_value='0.065'),
         DeclareLaunchArgument('wheel_separation', default_value='0.660'),
@@ -195,13 +201,70 @@ def generate_launch_description():
     )
 
     # ── SLAM Toolbox (mapping mode) ───────────────────────────────────────
-    slam_node = Node(
+    slam_node = LifecycleNode(
         package='slam_toolbox',
         executable='async_slam_toolbox_node',
         name='slam_toolbox',
         output='screen',
         parameters=[slam_cfg, {'use_sim_time': False}],
+        namespace='',
         condition=IfCondition(LaunchConfiguration('use_slam')),
+    )
+
+    configure_event = EmitEvent(
+        event=ChangeState(
+            lifecycle_node_matcher=matches_action(slam_node),
+            transition_id=Transition.TRANSITION_CONFIGURE
+        ),
+        condition=IfCondition(LaunchConfiguration('use_slam')),
+    )
+
+    activate_event = RegisterEventHandler(
+        OnStateTransition(
+            target_lifecycle_node=slam_node,
+            start_state="configuring",
+            goal_state="inactive",
+            entities=[
+                LogInfo(msg="[LifecycleLaunch] Slamtoolbox node is activating."),
+                EmitEvent(event=ChangeState(
+                    lifecycle_node_matcher=matches_action(slam_node),
+                    transition_id=Transition.TRANSITION_ACTIVATE
+                ))
+            ]
+        ),
+        condition=IfCondition(LaunchConfiguration('use_slam')),
+    )
+
+    # ── Map Server & AMCL (localization mode) ─────────────────────────────
+    map_server = Node(
+        package='nav2_map_server',
+        executable='map_server',
+        name='map_server',
+        output='screen',
+        parameters=[{'yaml_filename': LaunchConfiguration('map_yaml'), 'use_sim_time': False}],
+        condition=UnlessCondition(LaunchConfiguration('use_slam')),
+    )
+
+    amcl = Node(
+        package='nav2_amcl',
+        executable='amcl',
+        name='amcl',
+        output='screen',
+        parameters=[nav2_cfg, {'use_sim_time': False}],
+        condition=UnlessCondition(LaunchConfiguration('use_slam')),
+    )
+
+    lifecycle_manager_localization = Node(
+        package='nav2_lifecycle_manager',
+        executable='lifecycle_manager_server',
+        name='lifecycle_manager_localization',
+        output='screen',
+        parameters=[{
+            'use_sim_time': False,
+            'autostart': True,
+            'node_names': ['map_server', 'amcl']
+        }],
+        condition=UnlessCondition(LaunchConfiguration('use_slam')),
     )
 
     # ── Nav2 (bringup) ────────────────────────────────────────────────────
@@ -237,8 +300,21 @@ def generate_launch_description():
             wheel_odom,
             ekf_node,
             ydlidar_node,
-            TimerAction(period=3.0, actions=[slam_node]),
+
+            # t=3s: Start localization source (either SLAM or AMCL)
+            TimerAction(period=3.0, actions=[
+                slam_node,
+                configure_event,
+                activate_event,
+                map_server,
+                amcl,
+                lifecycle_manager_localization,
+            ]),
+
+            # t=5s: Start Nav2
             TimerAction(period=5.0, actions=[nav2_launch]),
+
+            # t=6s: Start RViz
             TimerAction(period=6.0, actions=[rviz_node]),
         ]
     )

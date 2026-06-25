@@ -282,7 +282,13 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        # Guard: rclpy.shutdown() is already invoked by the executor on SIGINT.
+        # Calling it again raises RCLError: rcl_shutdown already called.
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':

@@ -46,7 +46,6 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import os
-import subprocess
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -55,7 +54,7 @@ from launch.actions import (
     LogInfo,
     TimerAction,
 )
-from launch.conditions import IfCondition, UnlessCondition
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, Command
 from launch_ros.actions import Node
 
@@ -74,16 +73,16 @@ def generate_launch_description():
     args = [
         # Serial ports
         DeclareLaunchArgument(
-            'serial_port', default_value='/dev/ttyUSB0',
-            description='USB serial port for Arduino Nano (encoder + IMU)'
+            'serial_port', default_value='/dev/arduino',
+            description='USB serial port for Arduino Nano — uses permanent symlink /dev/arduino'
         ),
         DeclareLaunchArgument(
             'serial_baud', default_value='115200',
             description='Baud rate for Arduino serial communication'
         ),
         DeclareLaunchArgument(
-            'lidar_port', default_value='/dev/ttyUSB1',
-            description='Serial port for YDLIDAR X4'
+            'lidar_port', default_value='/dev/ydlidar',
+            description='Serial port for YDLIDAR — uses permanent symlink /dev/ydlidar'
         ),
 
         # Robot geometry — must match physical measurements
@@ -106,8 +105,8 @@ def generate_launch_description():
             description='Launch RViz2 for visualisation'
         ),
         DeclareLaunchArgument(
-            'rviz_config', default_value=os.path.join(pkg, 'rviz', 'rviz_config.rviz'),
-            description='RViz configuration file'
+            'rviz_config', default_value=os.path.join(pkg, 'rviz', 'slam_mapping.rviz'),
+            description='RViz configuration file — defaults to SLAM mapping view'
         ),
 
         # Camera
@@ -135,6 +134,7 @@ def generate_launch_description():
 
     # ── Config file paths ─────────────────────────────────────────────────────
     ekf_cfg  = os.path.join(pkg, 'config', 'ekf.yaml')
+    slam_cfg = os.path.join(pkg, 'config', 'slam_toolbox_real.yaml')
 
     # ── 1. Robot State Publisher ──────────────────────────────────────────────
     # Reads URDF → publishes /robot_description and static TF frames
@@ -256,7 +256,20 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('use_camera')),
     )
 
-    # ── 10. RViz2 ─────────────────────────────────────────────────────────────
+    # ── 10. SLAM Toolbox (async mapping mode) ────────────────────────────────
+    # Builds /map OccupancyGrid from /scan + TF (odom→base_footprint from EKF).
+    # Auto-saves pose graph every map_update_interval seconds to maps/lab_map.*
+    # Only launched when use_slam:=true (default).
+    slam_node = Node(
+        package='slam_toolbox',
+        executable='async_slam_toolbox_node',
+        name='slam_toolbox',
+        output='screen',
+        parameters=[slam_cfg, {'use_sim_time': False}],
+        condition=IfCondition(LaunchConfiguration('use_slam')),
+    )
+
+    # ── 11. RViz2 ─────────────────────────────────────────────────────────────
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
@@ -291,9 +304,15 @@ def generate_launch_description():
             # After 1s: camera
             TimerAction(period=1.0, actions=[camera_node]),
 
-            # After 3s: RViz (wait for all topics to be available)
-            TimerAction(period=3.0, actions=[rviz_node]),
+            # After 4s: SLAM Toolbox (needs EKF odom TF + /scan to be live)
+            # Builds /map and auto-saves pose graph every 5 s while driving.
+            TimerAction(period=4.0, actions=[slam_node]),
 
-            LogInfo(msg='[AURA] robot_bringup started. Monitor: ros2 topic hz /scan'),
+            # After 5s: RViz (wait for /map to appear)
+            TimerAction(period=5.0, actions=[rviz_node]),
+
+            LogInfo(msg='[AURA] robot_bringup started. Monitor: ros2 topic hz /scan /map'),
+            LogInfo(msg='[AURA] Map saves to: maps/lab_map.posegraph (every 5 s)'),
+            LogInfo(msg='[AURA] Final save: ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "{name: {data: \'lab_map\'}}"'),
         ]
     )
