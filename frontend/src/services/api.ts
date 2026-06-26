@@ -85,7 +85,7 @@ export const deliveriesApi = {
     method: 'PUT',
     body: JSON.stringify({ status }),
   }),
-  requestQuickItem: (payload: { username: string, pc_no: string, item_id: number, location: string, rack_id?: number | null, phone_number?: string | null }) => fetchWithAuth('/quick-delivery', {
+  requestQuickItem: (payload: { username: string, pc_no: string, item_id: number, location: string, rack_id?: number | null, email?: string | null }) => fetchWithAuth('/quick-delivery', {
     method: 'POST',
     body: JSON.stringify(payload),
   }),

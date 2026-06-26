@@ -10,3 +10,7 @@ python-multipart>=0.0.9
 websockets>=14.0
 alembic>=1.14.0
 bcrypt==3.2.2
+# ── Gmail API (OAuth2) for OTP email delivery ──────────────────────────────
+google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0
+google-api-python-client>=2.128.0

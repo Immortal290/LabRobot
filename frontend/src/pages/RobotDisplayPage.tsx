@@ -503,13 +503,18 @@ export const RobotDisplayPage: React.FC = () => {
         }}>
           {/* Animated Face Frame */}
           <div style={{
-            flex: 1,
-            position: 'relative',
+            flex: currentState !== RobotState.IDLE ? 'none' : 1,
+            position: currentState !== RobotState.IDLE ? 'fixed' : 'relative',
+            top: currentState !== RobotState.IDLE ? 0 : 'auto',
+            left: currentState !== RobotState.IDLE ? 0 : 'auto',
+            width: currentState !== RobotState.IDLE ? '100vw' : 'auto',
+            height: currentState !== RobotState.IDLE ? '100vh' : 'auto',
+            zIndex: currentState !== RobotState.IDLE ? 40 : 1,
             background: '#000',
-            borderRadius: '20px',
+            borderRadius: currentState !== RobotState.IDLE ? '0' : '20px',
             overflow: 'hidden',
-            border: `2px solid ${config.color}`,
-            boxShadow: `0 0 20px ${config.glowColor}`,
+            border: currentState !== RobotState.IDLE ? 'none' : `2px solid ${config.color}`,
+            boxShadow: currentState !== RobotState.IDLE ? 'none' : `0 0 20px ${config.glowColor}`,
           }}>
             <RobotDisplay
               state={currentState}
@@ -523,25 +528,27 @@ export const RobotDisplayPage: React.FC = () => {
             />
 
             {/* Float HUD Details on the Face Display */}
-            <div style={{
-              position: 'absolute',
-              top: '16px',
-              left: '16px',
-              background: 'rgba(0,0,0,0.7)',
-              padding: '6px 14px',
-              borderRadius: '20px',
-              border: `1px solid ${config.color}`,
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              letterSpacing: '1px',
-              color: config.color,
-              textTransform: 'uppercase',
-            }}>
-              STATUS: {config.label}
-            </div>
+            {currentState === RobotState.IDLE && (
+              <div style={{
+                position: 'absolute',
+                top: '16px',
+                left: '16px',
+                background: 'rgba(0,0,0,0.7)',
+                padding: '6px 14px',
+                borderRadius: '20px',
+                border: `1px solid ${config.color}`,
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                letterSpacing: '1px',
+                color: config.color,
+                textTransform: 'uppercase',
+              }}>
+                STATUS: {config.label}
+              </div>
+            )}
 
             {/* Quick manual selection overlay indicator */}
-            {manualOverride && (
+            {manualOverride && currentState === RobotState.IDLE && (
               <div 
                 onClick={() => setManualOverride(false)}
                 style={{

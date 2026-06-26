@@ -25,6 +25,16 @@ with SessionLocal() as db:
         db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS eta_seconds INTEGER;"))
         db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS otp VARCHAR;"))
         db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS phone_number VARCHAR;"))
+        # ── Migrate phone_number → email (idempotent) ──────────────────────────
+        db.execute(text("""
+            DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns
+                           WHERE table_name='deliveries' AND column_name='phone_number') THEN
+                    ALTER TABLE deliveries RENAME COLUMN phone_number TO email;
+                END IF;
+            END $$;
+        """))
+        db.execute(text("ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS email VARCHAR;"))
         db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS voice_assistant BOOLEAN DEFAULT TRUE;"))
         db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS auto_return_to_base BOOLEAN DEFAULT TRUE;"))
         db.execute(text("ALTER TABLE system_config ADD COLUMN IF NOT EXISTS collision_margin FLOAT DEFAULT 0.5;"))

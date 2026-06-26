@@ -3,7 +3,7 @@ import { GlassPanel } from '../components/GlassPanel';
 import { WorkflowTimeline } from '../components/WorkflowTimeline';
 import { RobotStateCard } from '../components/RobotStateCard';
 import {
-  Smartphone, Monitor, MapPin, Package, Battery, Send,
+  Mail, Monitor, MapPin, Package, Battery, Send,
   ShieldAlert, CheckCircle, Clock, Lock, Unlock, RefreshCw,
   User, LogOut, Compass, Eye, XCircle, AlertTriangle,
   Cpu, Navigation, Sparkles, ArrowRight,
@@ -31,8 +31,8 @@ export const QuickRequest: React.FC = () => {
   const [inventory,     setInventory]     = useState<any[]>([]);
   const [recentDeliveries, setRecentDeliveries] = useState<any[]>([]);
 
-  const [phoneNumber,   setPhoneNumber]   = useState(localStorage.getItem('quick_phone_number') || '');
-  const [smsNotification, setSmsNotification] = useState<{ message: string; visible: boolean } | null>(null);
+  const [phoneNumber,   setPhoneNumber]   = useState(localStorage.getItem('quick_email') || '');
+  const [emailNotification, setEmailNotification] = useState<{ message: string; visible: boolean } | null>(null);
 
   const [loading,         setLoading]        = useState(false);
   const [cancelling,      setCancelling]     = useState(false);
@@ -162,13 +162,13 @@ export const QuickRequest: React.FC = () => {
             }
             return current;
           });
-        } else if (data.type === 'sms_notification') {
-          setSmsNotification({
+        } else if (data.type === 'email_notification') {
+          setEmailNotification({
             message: data.message,
             visible: true
           });
           setTimeout(() => {
-            setSmsNotification(prev => prev && prev.message === data.message ? { ...prev, visible: false } : prev);
+            setEmailNotification(prev => prev && prev.message === data.message ? { ...prev, visible: false } : prev);
           }, 8000);
         }
       } catch (err) {
@@ -194,14 +194,14 @@ export const QuickRequest: React.FC = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('quick_username');
-    localStorage.removeItem('quick_phone_number');
+    localStorage.removeItem('quick_email');
     setUsername('');
     setPhoneNumber('');
     setActiveDelivery(null);
     setRecentDeliveries([]);
     setMessage(null);
     setPickupElapsed(0);
-    setSmsNotification(null);
+    setEmailNotification(null);
   };
 
   // ── Dispatch request ──────────────────────────────────────
@@ -221,10 +221,10 @@ export const QuickRequest: React.FC = () => {
         item_id: parseInt(itemId),
         location,
         rack_id: selectedItem?.rack_id || null,
-        phone_number: phoneNumber || null
+        email: phoneNumber || null
       });
       if (phoneNumber) {
-        localStorage.setItem('quick_phone_number', phoneNumber);
+        localStorage.setItem('quick_email', phoneNumber);
       }
       setActiveDelivery(res);
       setShowConfirmedSplash(true);
@@ -322,9 +322,9 @@ export const QuickRequest: React.FC = () => {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', padding: '16px', maxWidth: '480px', margin: '0 auto', gap: '16px', position: 'relative' }}>
 
-      {/* ── Incoming SMS Simulation ────────────────────── */}
+      {/* ── Incoming Email OTP Notification ────────────── */}
       <AnimatePresence>
-        {smsNotification && smsNotification.visible && (
+        {emailNotification && emailNotification.visible && (
           <motion.div
             initial={{ opacity: 0, y: -50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -349,16 +349,16 @@ export const QuickRequest: React.FC = () => {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', fontWeight: 700, color: '#2563eb' }}>
-              <Smartphone size={14} /> SMS Notification (Simulated)
+              <Mail size={14} /> OTP Email Sent!
               <button 
-                onClick={() => setSmsNotification(null)} 
+                onClick={() => setEmailNotification(null)} 
                 style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#6b7280', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 700 }}
               >
                 ✕
               </button>
             </div>
             <div style={{ fontSize: '0.85rem', fontWeight: 600, lineHeight: 1.4 }}>
-              {smsNotification.message}
+              {emailNotification.message}
             </div>
           </motion.div>
         )}
@@ -374,7 +374,7 @@ export const QuickRequest: React.FC = () => {
             boxShadow: `0 0 14px ${cfg.glowColor}`,
             transition: 'all 0.5s ease',
           }}>
-            <Smartphone size={18} color="#fff" />
+            <Mail size={18} color="#fff" />
           </div>
           <div>
             <h1 style={{ fontSize: '1.15rem', margin: 0, fontWeight: 700, letterSpacing: '-0.5px' }}>Lab Buddy</h1>
@@ -701,10 +701,10 @@ export const QuickRequest: React.FC = () => {
                         <span style={{ color: 'var(--text-secondary)' }}>Destination:</span>
                         <span style={{ fontWeight: 600 }}>{activeDelivery.pc_no} — {activeDelivery.location}</span>
                       </div>
-                      {activeDelivery.phone_number && (
+                      {activeDelivery.email && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span style={{ color: 'var(--text-secondary)' }}>SMS Alerts:</span>
-                          <span style={{ fontWeight: 600, color: 'var(--accent-cyan)' }}>{activeDelivery.phone_number}</span>
+                          <span style={{ color: 'var(--text-secondary)' }}>OTP Email:</span>
+                          <span style={{ fontWeight: 600, color: 'var(--accent-cyan)' }}>{activeDelivery.email}</span>
                         </div>
                       )}
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -904,16 +904,16 @@ export const QuickRequest: React.FC = () => {
 
                       <div>
                         <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '6px' }}>
-                          Mobile Phone Number (Optional, for SMS notifications)
+                          📧 Email Address <span style={{ color: 'var(--accent-cyan)' }}>*</span> <span style={{ color: 'var(--text-secondary)', fontWeight: 400 }}>(OTP will be sent here)</span>
                         </label>
                         <div style={{ position: 'relative' }}>
                           <input
-                            type="tel" className="input-field"
+                            required type="email" className="input-field"
                             value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)}
-                            placeholder="e.g. +1234567890"
+                            placeholder="e.g. student@university.edu"
                             style={{ paddingLeft: '40px' }}
                           />
-                          <Smartphone size={13} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
+                          <Mail size={13} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }} />
                         </div>
                       </div>
 

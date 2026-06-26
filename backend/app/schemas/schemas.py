@@ -99,7 +99,7 @@ class DeliveryCreate(BaseModel):
     rack_id: Optional[int] = None
     pc_no: Optional[str] = None
     location: Optional[str] = None
-    phone_number: Optional[str] = None
+    email: Optional[str] = None
 
 class QuickDeliveryCreate(BaseModel):
     username: str
@@ -107,7 +107,7 @@ class QuickDeliveryCreate(BaseModel):
     item_id: int
     location: str
     rack_id: Optional[int] = None
-    phone_number: Optional[str] = None
+    email: Optional[str] = None
 
 class DeliveryUpdate(BaseModel):
     # Valid values: pending, validating, assigned, navigating, arrived,
@@ -139,7 +139,7 @@ class Delivery(BaseModel):
     status: str
     eta_seconds: Optional[int] = None
     otp: Optional[str] = None
-    phone_number: Optional[str] = None
+    email: Optional[str] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None

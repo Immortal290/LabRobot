@@ -10,6 +10,16 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql://robot_user:robot_password@localhost:5432/labrobot"
 
+    # ── Gmail API (Web Application OAuth2) ────────────────────────────────────
+    # From Google Cloud Console → Credentials → your Web Client → Copy values
+    GMAIL_CLIENT_ID: str = ""
+    GMAIL_CLIENT_SECRET: str = ""
+    # Get this ONCE via: https://developers.google.com/oauthplayground
+    GMAIL_REFRESH_TOKEN: str = ""
+    # The Gmail address used to authorize (the Lab Buddy sender account)
+    GMAIL_SENDER_ADDRESS: str = ""
+    GMAIL_SENDER_NAME: str = "Lab Buddy"
+
     class Config:
         env_file = ".env"
 

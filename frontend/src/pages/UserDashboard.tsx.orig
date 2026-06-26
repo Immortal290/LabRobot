@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { GlassPanel } from '../components/GlassPanel';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Package, LockOpen, LogOut, RefreshCcw, ShieldAlert, Plus, Minus, Server, Smartphone, Activity } from 'lucide-react';
+import { Package, LockOpen, LogOut, RefreshCcw, ShieldAlert, Plus, Minus, Server } from 'lucide-react';
 import { inventoryApi, rackApi, configApi } from '../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import QRCode from 'qrcode';
 
 export const UserDashboard: React.FC = () => {
   const { user, logout } = useAuth();
@@ -15,12 +14,6 @@ export const UserDashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [config, setConfig] = useState<any>(null);
-  
-  // Telemetry & Portal State
-  const [telemetry, setTelemetry] = useState<any>(null);
-  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
-  const [portalUrl, setPortalUrl] = useState<string>('');
-  const wsRef = useRef<WebSocket | null>(null);
   
   // Rack Access State
   const [selectedRack, setSelectedRack] = useState<number | null>(null);
@@ -58,44 +51,6 @@ export const UserDashboard: React.FC = () => {
       loadInventory();
     }
   }, [activeTab]);
-
-  useEffect(() => {
-    const setupPortal = async () => {
-      let generatedUrl = '';
-      try {
-        const res = await configApi.getTunnelUrl();
-        if (res && res.url) {
-          generatedUrl = `${res.url}/quick-request`;
-        } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-          const ipRes = await configApi.getNetworkIp();
-          if (ipRes.ip) {
-            generatedUrl = `${window.location.protocol}//${ipRes.ip}${window.location.port ? \`:\${window.location.port}\` : ''}/quick-request`;
-          }
-        }
-      } catch (e) {}
-      if (generatedUrl) {
-        setPortalUrl(generatedUrl);
-        const dataUrl = await QRCode.toDataURL(generatedUrl, { width: 180, margin: 2, color: { dark: '#ffffff', light: '#0a1122' } });
-        setQrCodeUrl(dataUrl);
-      }
-    };
-    setupPortal();
-
-    const connectWs = () => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/ui`);
-      wsRef.current = ws;
-      ws.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.type === 'telemetry') setTelemetry(data);
-        } catch (e) {}
-      };
-      ws.onclose = () => setTimeout(connectWs, 5000);
-    };
-    connectWs();
-    return () => wsRef.current?.close();
-  }, []);
 
   const handleRequestItem = async (itemId: number) => {
     try {
@@ -197,32 +152,6 @@ export const UserDashboard: React.FC = () => {
         >
           <Package size={18} /> Catalog
         </button>
-        <button 
-          className={`btn ${activeTab === 'portal' ? 'btn-primary' : ''}`}
-          style={{ background: activeTab === 'portal' ? '' : 'rgba(255,255,255,0.05)' }}
-          onClick={() => { setActiveTab('portal'); handleCloseRack(); }}
-        >
-          <Smartphone size={18} /> Mobile Portal
-        </button>
-      </div>
-
-      {/* Telemetry Bar */}
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '2rem', padding: '12px 24px', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Activity size={18} color="var(--accent-cyan)" />
-          <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Status:</span>
-          <span style={{ fontWeight: 600, color: '#fff' }}>{telemetry?.status || 'Idle'}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Battery:</span>
-          <span style={{ fontWeight: 600, color: (telemetry?.battery || 100) > 20 ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-            {telemetry?.battery ? \`\${telemetry.battery.toFixed(1)}%\` : '100%'}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Mission:</span>
-          <span style={{ fontWeight: 600, color: '#fff' }}>{telemetry?.mission || 'None'}</span>
-        </div>
       </div>
       
       <AnimatePresence>
@@ -384,26 +313,6 @@ export const UserDashboard: React.FC = () => {
                 </GlassPanel>
               ))}
             </div>
-          </motion.div>
-        )}
-
-        {activeTab === 'portal' && (
-          <motion.div key="portal" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-            <GlassPanel style={{ maxWidth: '600px', margin: '0 auto', textAlign: 'center', padding: '40px' }}>
-              <Smartphone size={48} color="var(--accent-blue)" style={{ margin: '0 auto 20px' }} />
-              <h2 style={{ marginBottom: '1rem' }}>Quick Request Portal</h2>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-                Scan this QR code with your mobile device to open the Quick Request Portal. You can easily request items directly from your phone.
-              </p>
-              {qrCodeUrl ? (
-                <div style={{ background: '#fff', padding: '16px', borderRadius: '16px', display: 'inline-block', marginBottom: '2rem' }}>
-                  <img src={qrCodeUrl} alt="Portal QR Code" style={{ display: 'block' }} />
-                </div>
-              ) : (
-                <div style={{ padding: '40px', color: 'var(--text-secondary)' }}>Generating QR Code...</div>
-              )}
-              {portalUrl && <div style={{ fontSize: '0.9rem', color: 'var(--accent-cyan)', wordBreak: 'break-all' }}>{portalUrl}</div>}
-            </GlassPanel>
           </motion.div>
         )}
       </AnimatePresence>

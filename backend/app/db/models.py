@@ -58,7 +58,7 @@ class Delivery(Base):
     location = Column(String, nullable=True)
     status = Column(String)
     otp = Column(String, nullable=True)
-    phone_number = Column(String, nullable=True)
+    email = Column(String, nullable=True)          # OTP delivery email
     eta_seconds = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
@@ -122,16 +122,16 @@ class OTPLog(Base):
     """Stores every OTP generation and verification event for audit."""
     __tablename__ = "otp_logs"
 
-    id           = Column(Integer, primary_key=True, index=True)
-    delivery_id  = Column(Integer, ForeignKey("deliveries.id"), nullable=True)
-    user_id      = Column(Integer, ForeignKey("users.id"), nullable=True)
-    phone_number = Column(String, nullable=True)
-    otp_code     = Column(String, nullable=False)
-    action       = Column(String, nullable=True)   # send | verify | expire
-    verified     = Column(Boolean, default=False)
-    attempts     = Column(Integer, default=0)
-    created_at   = Column(DateTime, default=datetime.utcnow)
-    verified_at  = Column(DateTime, nullable=True)
+    id          = Column(Integer, primary_key=True, index=True)
+    delivery_id = Column(Integer, ForeignKey("deliveries.id"), nullable=True)
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=True)
+    email       = Column(String, nullable=True)    # recipient email
+    otp_code    = Column(String, nullable=False)
+    action      = Column(String, nullable=True)    # send | verify | expire
+    verified    = Column(Boolean, default=False)
+    attempts    = Column(Integer, default=0)
+    created_at  = Column(DateTime, default=datetime.utcnow)
+    verified_at = Column(DateTime, nullable=True)
 
 # ─── NEW: Robot Status Snapshot ──────────────────────────────────────────────
 class RobotStatusSnapshot(Base):

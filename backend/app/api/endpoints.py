@@ -287,7 +287,7 @@ def broadcast_delivery_update(db_delivery, db):
             "location": db_delivery.location,
             "status": db_delivery.status,
             "otp": db_delivery.otp,
-            "phone_number": db_delivery.phone_number,
+            "email": db_delivery.email,
             "created_at": db_delivery.created_at.isoformat() if db_delivery.created_at else None,
             "completed_at": db_delivery.completed_at.isoformat() if db_delivery.completed_at else None
         }
@@ -323,7 +323,7 @@ def create_delivery(delivery: schemas.DeliveryCreate, db: Session = Depends(data
         rack_id=delivery.rack_id, 
         status="pending_approval",
         otp=None,
-        phone_number=delivery.phone_number
+        email=delivery.email
     )
     item.quantity -= 1
     if item.quantity == 0:
@@ -378,7 +378,7 @@ def create_quick_delivery(payload: schemas.QuickDeliveryCreate, db: Session = De
         rack_id=payload.rack_id,
         status="pending_approval",
         otp=None,
-        phone_number=payload.phone_number
+        email=payload.email
     )
     item.quantity -= 1
     if item.quantity == 0:
@@ -392,38 +392,235 @@ def create_quick_delivery(payload: schemas.QuickDeliveryCreate, db: Session = De
     broadcast_delivery_update(db_delivery, db)
     return db_delivery
 
-def trigger_sms_notification(delivery, db: Session):
-    if delivery.phone_number:
-        # Get item name
-        item = db.query(models.Inventory).filter(models.Inventory.id == delivery.item_id).first()
-        item_name = item.name if item else "Equipment"
-        
-        # 1. Print a large, highlighted console box (visible in docker compose terminal)
-        print(f"\n======================================================================")
-        print(f"📱 [REALTIME SMS DISPATCH] To: {delivery.phone_number}")
-        print(f"💬 MESSAGE: 🤖 Lab Buddy: Your retrieval OTP is {delivery.otp} for item '{item_name}'.")
-        print(f"======================================================================\n")
-        
-        # 2. Add to logs database so it appears in the Admin logs
-        create_log(db, "system", f"📱 Realtime SMS sent to {delivery.phone_number} (OTP: {delivery.otp})")
-        
-        # 3. Broadcast SMS event to all UI clients via WebSocket in real-time
-        from app.main import manager
-        import asyncio, json
-        
-        sms_dict = {
-            "type": "sms_notification",
-            "phone_number": delivery.phone_number,
-            "delivery_id": delivery.id,
-            "message": f"🤖 Lab Buddy: Your retrieval OTP is {delivery.otp}. Enter it on the robot screen to unlock Locker 0{delivery.rack_id}."
-        }
-        
-        broadcast_task = manager.broadcast_to_ui(json.dumps(sms_dict))
+# ─── GMAIL API OTP EMAIL ─────────────────────────────────────────────────────
+
+def _build_otp_html(otp: str, item_name: str, rack_id, recipient_name: str) -> str:
+    """Returns a premium HTML email body for the OTP notification."""
+    return f"""\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lab Buddy — Your Delivery OTP</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0f172a;font-family:'Segoe UI',Roboto,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#0f172a;padding:40px 16px;">
+  <tr><td align="center">
+    <table width="520" cellpadding="0" cellspacing="0" style="background:linear-gradient(160deg,#1e293b 0%,#0f172a 100%);border-radius:20px;overflow:hidden;border:1px solid rgba(6,182,212,0.2);box-shadow:0 25px 60px rgba(0,0,0,0.6);">
+
+      <!-- HEADER -->
+      <tr>
+        <td style="background:linear-gradient(135deg,#0891b2 0%,#6d28d9 100%);padding:32px 40px;text-align:center;">
+          <div style="font-size:40px;margin-bottom:8px;">🤖</div>
+          <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:800;letter-spacing:-0.5px;">Lab Buddy</h1>
+          <p style="margin:6px 0 0;color:rgba(255,255,255,0.7);font-size:13px;font-weight:500;">Automated Lab Equipment Delivery System</p>
+        </td>
+      </tr>
+
+      <!-- STATUS BADGE -->
+      <tr>
+        <td style="padding:28px 40px 0;text-align:center;">
+          <span style="display:inline-block;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.35);color:#c4b5fd;padding:6px 18px;border-radius:30px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">
+            🔔 &nbsp;DELIVERY ARRIVED
+          </span>
+        </td>
+      </tr>
+
+      <!-- GREETING -->
+      <tr>
+        <td style="padding:20px 40px 0;">
+          <p style="margin:0;color:#e2e8f0;font-size:16px;font-weight:600;">Hi {recipient_name},</p>
+          <p style="margin:8px 0 0;color:#94a3b8;font-size:14px;line-height:1.6;">
+            Great news! Your lab equipment has arrived and the robot is waiting for you. Use the one-time password below on the robot's touch screen to unlock your compartment.
+          </p>
+        </td>
+      </tr>
+
+      <!-- OTP BOX -->
+      <tr>
+        <td style="padding:24px 40px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(6,182,212,0.06);border:2px solid rgba(6,182,212,0.35);border-radius:16px;overflow:hidden;">
+            <tr>
+              <td style="padding:24px;text-align:center;">
+                <p style="margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#22d3ee;font-weight:700;">🔑 &nbsp;Your One-Time Password</p>
+                <div style="font-size:52px;font-weight:900;letter-spacing:14px;color:#ffffff;font-family:'Courier New',monospace;text-shadow:0 0 30px rgba(6,182,212,0.5);">{otp}</div>
+                <p style="margin:10px 0 0;font-size:12px;color:#64748b;">Valid for this delivery only &nbsp;·&nbsp; Do not share with anyone</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- DELIVERY DETAILS -->
+      <tr>
+        <td style="padding:0 40px 24px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(0,0,0,0.2);border-radius:12px;overflow:hidden;">
+            <tr>
+              <td style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.04);">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="color:#64748b;font-size:13px;">📦 &nbsp;Equipment</td>
+                    <td align="right" style="color:#e2e8f0;font-size:13px;font-weight:600;">{item_name}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.04);">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="color:#64748b;font-size:13px;">🗄️ &nbsp;Locker Compartment</td>
+                    <td align="right" style="color:#e2e8f0;font-size:13px;font-weight:600;">R-{rack_id}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 20px;">
+                <table width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="color:#64748b;font-size:13px;">⚡ &nbsp;What to do</td>
+                    <td align="right" style="color:#22d3ee;font-size:13px;font-weight:600;">Walk → Enter OTP → Collect</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- STEPS -->
+      <tr>
+        <td style="padding:0 40px 28px;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background:rgba(109,40,217,0.08);border:1px solid rgba(109,40,217,0.2);border-radius:12px;">
+            <tr>
+              <td style="padding:16px 20px;">
+                <p style="margin:0 0 12px;color:#a78bfa;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">📋 &nbsp;Step-by-Step</p>
+                <p style="margin:0 0 6px;color:#cbd5e1;font-size:13px;">1️⃣ &nbsp;Walk to the Lab Buddy robot</p>
+                <p style="margin:0 0 6px;color:#cbd5e1;font-size:13px;">2️⃣ &nbsp;Tap <strong style="color:#fff;">"Enter OTP"</strong> on the touch screen</p>
+                <p style="margin:0 0 6px;color:#cbd5e1;font-size:13px;">3️⃣ &nbsp;Type <strong style="color:#22d3ee;font-family:monospace;font-size:15px;">{otp}</strong> and confirm</p>
+                <p style="margin:0;color:#cbd5e1;font-size:13px;">4️⃣ &nbsp;Collect your item from compartment <strong style="color:#fff;">R-{rack_id}</strong></p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- FOOTER -->
+      <tr>
+        <td style="padding:20px 40px;text-align:center;border-top:1px solid rgba(255,255,255,0.05);">
+          <p style="margin:0;color:#334155;font-size:12px;line-height:1.6;">
+            This is an automated message from <strong style="color:#475569;">Lab Buddy Delivery System</strong><br>
+            Please do not reply to this email.
+          </p>
+        </td>
+      </tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>"""
+
+
+def send_otp_email(delivery, db: Session):
+    """Send OTP to the user's email via Gmail API (Web App OAuth2 — env var credentials).
+    Falls back to a console simulation if credentials are not configured."""
+    if not delivery.email:
+        return
+
+    item      = db.query(models.Inventory).filter(models.Inventory.id == delivery.item_id).first()
+    item_name = item.name if item else "Lab Equipment"
+
+    user = db.query(models.User).filter(models.User.id == delivery.user_id).first()
+    recipient_name = (
+        user.profile.full_name if user and user.profile and user.profile.full_name
+        else (user.username.capitalize() if user else "Student")
+    )
+
+    subject   = f"🔑 Lab Buddy OTP: {delivery.otp} — Your equipment has arrived!"
+    html_body = _build_otp_html(delivery.otp, item_name, delivery.rack_id, recipient_name)
+
+    # ── Attempt real Gmail API send using Web App OAuth2 credentials ──────────
+    email_sent = False
+    if settings.GMAIL_CLIENT_ID and settings.GMAIL_CLIENT_SECRET and settings.GMAIL_REFRESH_TOKEN:
         try:
-            loop = asyncio.get_running_loop()
-            loop.create_task(broadcast_task)
-        except RuntimeError:
-            pass
+            import base64
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            from google.auth.transport.requests import Request
+            from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
+
+            # Build credentials directly from env vars — no JSON files needed.
+            # The refresh_token is permanent (never expires unless revoked).
+            creds = Credentials(
+                token=None,
+                refresh_token=settings.GMAIL_REFRESH_TOKEN,
+                client_id=settings.GMAIL_CLIENT_ID,
+                client_secret=settings.GMAIL_CLIENT_SECRET,
+                token_uri="https://oauth2.googleapis.com/token",
+            )
+            # Exchange refresh_token for a short-lived access_token
+            creds.refresh(Request())
+
+            # Build MIME email (table-based HTML for email client compatibility)
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"]    = f"{settings.GMAIL_SENDER_NAME} <{settings.GMAIL_SENDER_ADDRESS}>"
+            msg["To"]      = delivery.email
+            msg["Reply-To"] = f"no-reply@labbuddy.local"
+            msg.attach(MIMEText(html_body, "html"))
+
+            raw     = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+            service = build("gmail", "v1", credentials=creds)
+            service.users().messages().send(userId="me", body={"raw": raw}).execute()
+
+            email_sent = True
+            print(f"\n✅ [GMAIL OTP EMAIL] Sent to {delivery.email} (OTP: {delivery.otp})")
+            create_log(db, "system",
+                       f"📧 OTP email sent to {delivery.email} — delivery #{delivery.id} (OTP: {delivery.otp})")
+
+            db.add(models.OTPLog(
+                delivery_id=delivery.id,
+                user_id=delivery.user_id,
+                email=delivery.email,
+                otp_code=delivery.otp,
+                action="send",
+            ))
+            db.commit()
+
+        except Exception as exc:
+            print(f"\n⚠️  [GMAIL API ERROR] {exc}")
+            create_log(db, "system", f"⚠️ Email failed for {delivery.email}: {exc}")
+
+    # ── Console simulation fallback ────────────────────────────────────────────
+    if not email_sent:
+        print(f"\n{'='*70}")
+        print(f"📧 [SIMULATED EMAIL] To: {delivery.email}")
+        print(f"📬 Subject: {subject}")
+        print(f"🔑 OTP CODE: {delivery.otp}   |   Item: {item_name}   |   Locker: R-{delivery.rack_id}")
+        print(f"{'='*70}\n")
+        create_log(db, "system",
+                   f"📧 [Simulated] OTP email to {delivery.email} (OTP: {delivery.otp}) — set GMAIL_* env vars to go live.")
+
+    # ── Real-time WebSocket push to mobile portal (always fires) ─────────────
+    from app.main import manager
+    import asyncio, json
+    ws_payload = {
+        "type":        "email_notification",
+        "email":       delivery.email,
+        "delivery_id": delivery.id,
+        "otp":         delivery.otp,
+        "message":     f"🤖 Lab Buddy: Your retrieval OTP is {delivery.otp}. Enter it on the robot screen to open Locker 0{delivery.rack_id}."
+    }
+    broadcast_task = manager.broadcast_to_ui(json.dumps(ws_payload))
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(broadcast_task)
+    except RuntimeError:
+        pass
 
 @router.put("/deliveries/{delivery_id}", response_model=schemas.Delivery)
 def update_delivery_status(delivery_id: int, update: schemas.DeliveryUpdate, db: Session = Depends(database.get_db), current_user: models.User = Depends(dependencies.get_current_active_user)):
@@ -448,7 +645,7 @@ def update_delivery_status(delivery_id: int, update: schemas.DeliveryUpdate, db:
     
     # Trigger SMS notification if it has arrived
     if update.status == "arrived" and old_status != "arrived":
-        trigger_sms_notification(delivery, db)
+        send_otp_email(delivery, db)
         
     broadcast_delivery_update(delivery, db)
     return delivery
