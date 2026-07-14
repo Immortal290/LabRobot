@@ -1,0 +1,27 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  laser_filter.yaml — cleans YDLIDAR X2 raw scans BEFORE slam_toolbox / rf2o
+#  Subscribes:  /scan_raw   (direct output of the YDLIDAR driver)
+#  Publishes:   /scan       (what slam_toolbox and rf2o_laser_odometry consume)
+# ═══════════════════════════════════════════════════════════════════════════
+
+scan_filter_chain:
+  - name: shadows
+    type: laser_filters/ScanShadowsFilter
+    params:
+      min_angle: 10.0
+      max_angle: 170.0
+      neighbors: 1
+      window: 1
+
+  - name: speckle
+    type: laser_filters/SpeckleFilter
+    params:
+      max_range: 8.0
+      max_range_difference: 0.1
+      filter_window: 2
+
+  - name: range
+    type: laser_filters/LaserScanRangeFilter
+    params:
+      lower_threshold: 0.15    # strips self-detection noise near the sensor body
+      upper_threshold: 8.0     # X2 spec is 10m but readings near max are unreliable indoors

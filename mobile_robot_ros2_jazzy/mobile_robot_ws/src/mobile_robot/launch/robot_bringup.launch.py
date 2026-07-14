@@ -95,7 +95,7 @@ def generate_launch_description():
             description='Wheel centre-to-centre distance in metres'
         ),
         DeclareLaunchArgument(
-            'ticks_per_rev', default_value='1440.0',
+            'ticks_per_rev', default_value='720.0',
             description='Encoder ticks per wheel revolution (measure this!)'
         ),
 
@@ -129,6 +129,10 @@ def generate_launch_description():
             description='Absolute path prefix for the auto-saved map (no extension)'
         ),
 
+        DeclareLaunchArgument(
+            'use_ekf', default_value='true',
+            description='Launch EKF node'
+        ),
         # NOTE: IMU disabled — add MPU firmware to Arduino then restore use_imu_filter arg
     ]
 
@@ -206,6 +210,7 @@ def generate_launch_description():
         remappings=[
             ('odometry/filtered', '/odometry/filtered'),
         ],
+        condition=IfCondition(LaunchConfiguration('use_ekf')),
     )
 
     # ── 8. YDLIDAR X2 ─────────────────────────────────────────────────────────
@@ -235,6 +240,7 @@ def generate_launch_description():
             'sample_rate':        3,
             'auto_reconnect':     True,
         }],
+        remappings=[('scan', '/scan_raw')],
     )
 
     # ── 9. USB Camera ─────────────────────────────────────────────────────────

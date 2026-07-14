@@ -52,9 +52,12 @@
   <!-- Front-rear offset: wheels sit near the corners of the 2ft × 2ft base -->
   <xacro:property name="wheel_x_offset"  value="${base_length / 2.0 - 0.075}"/>  <!-- ~0.23 m from centre -->
 
-  <!-- Sensor heights above base_link origin (= centre of the base plate) -->
-  <xacro:property name="lidar_height_above_base"  value="0.150"/>   <!-- 150 mm per spec  -->
-  <xacro:property name="camera_height_above_base" value="0.180"/>   <!-- 180 mm per spec  -->
+  <!-- Sensor heights above base_link origin (= centre of the base plate)         -->
+  <!-- TUNE: measure physical distance from base plate TOP to lidar scan plane,    -->
+  <!--        then add base_thickness/2 (= 0.006 m).                               -->
+  <!-- Example: lidar bracket = 68 mm above plate top → 0.068 + 0.006 = 0.074 m  -->
+  <xacro:property name="lidar_height_above_base"  value="0.074"/>   <!-- TUNE to your physical bracket height -->
+  <xacro:property name="camera_height_above_base" value="0.100"/>   <!-- TUNE to your physical camera mount  -->
 
   <!-- Lidar physical geometry (YDLIDAR X4) -->
   <xacro:property name="lidar_radius" value="0.038"/>   <!-- 76 mm diameter body -->
@@ -181,13 +184,13 @@
 
   <!-- ── base_footprint ──────────────────────────────────────────────────── -->
   <!-- Ground projection frame; no geometry. Origin at ground level under robot -->
-  <link name="base_footprint">
-    <xacro:dummy_inertia/>
-  </link>
+  <!-- NOTE: Root link must NOT have inertia (KDL does not support it).          -->
+  <link name="base_footprint"/>
 
   <!-- ── base_link ──────────────────────────────────────────────────────── -->
   <!-- Physical chassis plate.  Origin at the CENTRE of the plate in XYZ.    -->
   <link name="base_link">
+    <!-- Main base plate -->
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
@@ -197,6 +200,20 @@
         <color rgba="0.76 0.60 0.42 1.0"/>
       </material>
     </visual>
+    
+    <!-- Lidar Standoff Pillar -->
+    <visual>
+      <origin xyz="0 0 ${(lidar_height_above_base - lidar_body_h/2.0 + base_thickness/2.0)/2.0}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder radius="0.015" length="${(lidar_height_above_base - lidar_body_h/2.0) - base_thickness/2.0}"/>
+      </geometry>
+      <material name="lidar_black">
+        <color rgba="0.1 0.1 0.1 1.0"/>
+      </material>
+    </visual>
+
+
+
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
@@ -232,32 +249,7 @@
                              h="${lidar_body_h}"/>
   </link>
 
-  <!-- ── camera_link ────────────────────────────────────────────────────── -->
-  <!-- USB camera, front-centre of robot at 180 mm above base_link           -->
-  <link name="camera_link">
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <box size="${cam_length} ${cam_width} ${cam_height}"/>
-      </geometry>
-      <material name="camera_blue">
-        <color rgba="0.1 0.3 0.8 1.0"/>
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <box size="${cam_length} ${cam_width} ${cam_height}"/>
-      </geometry>
-    </collision>
-    <xacro:box_inertia m="${camera_mass}"
-                       l="${cam_length}" w="${cam_width}" h="${cam_height}"/>
-  </link>
 
-  <!-- Camera optical frame — ROS convention: Z=forward, X=right, Y=down -->
-  <link name="camera_optical_frame">
-    <xacro:dummy_inertia/>
-  </link>
 
   <!-- ── imu_link ────────────────────────────────────────────────────────── -->
   <!-- MPU9050 IMU, mounted at centre of chassis -->
@@ -326,28 +318,7 @@
     <origin xyz="0 0 ${lidar_height_above_base}" rpy="0 0 0"/>
   </joint>
 
-  <!--
-    base_link → camera_link
-    Camera is mounted at the front-centre of the robot.
-    X = base_length/2 (front edge)
-    Z = 180 mm above base_link
-  -->
-  <joint name="camera_joint" type="fixed">
-    <parent link="base_link"/>
-    <child  link="camera_link"/>
-    <origin xyz="${base_length / 2.0 - cam_length / 2.0}
-                 0
-                 ${camera_height_above_base}"
-            rpy="0 0 0"/>
-  </joint>
 
-  <!-- Camera optical joint: rotate from ROS mechanical frame to optical frame -->
-  <!-- Mechanical: X=fwd, Y=left, Z=up  →  Optical: Z=fwd, X=right, Y=down  -->
-  <joint name="camera_optical_joint" type="fixed">
-    <parent link="camera_link"/>
-    <child  link="camera_optical_frame"/>
-    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
-  </joint>
 
   <!-- base_link → imu_link (centre of chassis, flat on plate top) -->
   <joint name="imu_joint" type="fixed">

@@ -22,12 +22,11 @@
 ekf_filter_node:
   ros__parameters:
 
-    # ── Core settings ──────────────────────────────────────────────────────────
-    frequency:          20.0      # EKF update rate (Hz) — matched to wheel odom rate
+    frequency:          30.0      # EKF update rate (Hz) — increased to 30Hz for smooth TF publishing without shaking
     sensor_timeout:     0.1       # seconds before sensor marked stale
     two_d_mode:         true      # ground robot: lock Z, roll, pitch to 0
     transform_time_offset: 0.0
-    transform_timeout:  0.05
+    transform_timeout:  0.05      # 50ms is perfect for 30Hz EKF rate to prevent visual jitter
     print_diagnostics:  true
     debug:              false
     use_sim_time:       false     # REAL hardware: false  |  Simulation: true
@@ -56,23 +55,37 @@ ekf_filter_node:
     # ══════════════════════════════════════════════════════════════════════════
     odom0: /wheel_odom
     odom0_config:
-      - [false, false, false,    # x, y, z pose — NOT fused (avoid slip drift)
-         false, false, false,    # roll, pitch, yaw — IMU provides yaw
+      - [false, false, false,    # x, y, z pose — NOT fused
+         false, false, false,    # roll, pitch, yaw — NOT fused
          true,  false, false,    # vx FUSED ✓ | vy=0 non-holonomic | vz=0
-         false, false, true ]    # vroll=0 | vpitch=0 | vyaw FUSED ✓
+         false, false, false ]   # vroll=0 | vpitch=0 | vyaw — NOT fused
     odom0_queue_size:   10
     odom0_nodelay:      true
-    odom0_differential: false    # absolute velocity (not differential)
+    odom0_differential: false
     odom0_relative:     false
     odom0_pose_rejection_threshold:  5.0
     odom0_twist_rejection_threshold: 1.0
 
+    odom1: /rf2o_odom
+    odom1_config:
+      - [false, false, false,    # x, y, z pose
+         false, false, true,     # yaw — FUSED (from laser odometry, slip independent)
+         true,  false, false,    # vx — FUSED (from laser odometry, slip independent)
+         false, false, true ]    # vyaw — FUSED (from laser odometry, slip independent)
+    odom1_queue_size:   10
+    odom1_nodelay:      true
+    odom1_differential: true     # relative changes to prevent long term drift in EKF pose
+    odom1_relative:     false
+    odom1_pose_rejection_threshold:  3.0
+    odom1_twist_rejection_threshold: 0.8
+
     # ══════════════════════════════════════════════════════════════════════════
-    #  INPUT 1 — IMU  [DISABLED: MPU not yet configured in Arduino firmware]
-    #  To re-enable when MPU is ready:
-    #    1. Flash MPU firmware to Arduino (sends "IMU ax ay az gx gy gz mx my mz\n")
-    #    2. Uncomment the imu0 block below
-    #    3. Set use_imu_filter:=true in robot_bringup.launch.py
+    #  INPUT 1 — IMU  [DISABLED — use_imu:=false, /imu/data never published]
+    #  The imu_filter_madgwick node is NOT running, so /imu/data is never
+    #  published. Keeping imu0 active causes the EKF to spin waiting for
+    #  data that never arrives → "Failed to meet update rate" errors.
+    #
+    #  To re-enable: set use_imu:=true in the launch command AND uncomment below.
     # ══════════════════════════════════════════════════════════════════════════
     # imu0: /imu/data
     # imu0_config:

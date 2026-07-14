@@ -44,8 +44,14 @@ setup(
         'console_scripts': [
             # Real hardware scripts
             'encoder_serial_node  = mobile_robot.scripts.encoder_serial_node:main',
+            'encoder_serial_node.py = mobile_robot.scripts.encoder_serial_node:main',
             'imu_serial_node      = mobile_robot.scripts.imu_serial_node:main',
             'wheel_odom_node      = mobile_robot.scripts.wheel_odom_node:main',
+            'wheel_odom_node.py   = mobile_robot.scripts.wheel_odom_node:main',
+
+            # Teleoperation
+            'teleop_hold          = mobile_robot.scripts.teleop_hold:main',
+            'teleop_hold.py       = mobile_robot.scripts.teleop_hold:main',
 
             # Simulation/utility scripts
             'cmd_vel_to_joints    = mobile_robot.cmd_vel_to_joints:main',

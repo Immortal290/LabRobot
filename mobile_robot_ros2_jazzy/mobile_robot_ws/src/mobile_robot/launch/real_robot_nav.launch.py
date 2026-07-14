@@ -67,7 +67,11 @@ def generate_launch_description():
         DeclareLaunchArgument('serial_baud',     default_value='115200'),
         DeclareLaunchArgument('wheel_radius',    default_value='0.065'),
         DeclareLaunchArgument('wheel_separation', default_value='0.660'),
-        DeclareLaunchArgument('ticks_per_rev',   default_value='1440.0'),
+        DeclareLaunchArgument('ticks_per_rev',   default_value='720.0'),
+        DeclareLaunchArgument('ticks_scale',     default_value='1.0',
+                              description='Scaling factor for wheel ticks to calibrate slip/gear-ratio'),
+        DeclareLaunchArgument('min_pwm',         default_value='60',
+                              description='Minimum PWM deadband for heavy wheels'),
         DeclareLaunchArgument('use_slam',        default_value='true',
                               description='true=SLAM mapping, false=localisation with existing map'),
         DeclareLaunchArgument('map_yaml',        default_value='',
@@ -82,6 +86,7 @@ def generate_launch_description():
     ekf_cfg      = os.path.join(pkg, 'config', 'ekf.yaml')
     slam_cfg     = os.path.join(pkg, 'config', 'slam_toolbox_real.yaml')
     nav2_cfg     = os.path.join(pkg, 'config', 'nav2_params_real.yaml')
+    rf2o_cfg     = os.path.join(pkg, 'config', 'rf2o_params.yaml')
     robot_urdf   = os.path.join(pkg, 'urdf', 'mobile_robot.urdf.xacro')
 
     # Use xacro to process the URDF dynamically if xacro is used, or fallback to file reading
@@ -103,6 +108,14 @@ def generate_launch_description():
         }],
     )
 
+    # ── Joint State Publisher ─────────────────────────────────────────────
+    jsp_node = Node(
+        package='joint_state_publisher',
+        executable='joint_state_publisher',
+        name='joint_state_publisher',
+        parameters=[{'use_sim_time': False}],
+    )
+
     # ── Unified Hardware Serial Bridge (Encoder + Motors) ──────────────────
     hardware_bridge = Node(
         package='mobile_robot',
@@ -115,6 +128,7 @@ def generate_launch_description():
             'wheel_base':     LaunchConfiguration('wheel_separation'),
             'max_linear_vel': 0.5,
             'max_pwm':        200,
+            'min_pwm':        LaunchConfiguration('min_pwm'),
         }],
     )
 
@@ -126,7 +140,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time':         False,
-            'use_mag':              True,
+            'use_mag':              False,
             'publish_tf':           False,
             'world_frame':          'enu',
             'gain':                 0.1,
@@ -156,10 +170,20 @@ def generate_launch_description():
             'wheel_radius':     LaunchConfiguration('wheel_radius'),
             'wheel_separation': LaunchConfiguration('wheel_separation'),
             'ticks_per_rev':    LaunchConfiguration('ticks_per_rev'),
+            'ticks_scale':      LaunchConfiguration('ticks_scale'),
             'odom_frame':       'odom',
             'base_frame':       'base_footprint',
             'publish_tf':       False,   # EKF publishes authoritative TF
         }],
+    )
+
+    # ── rf2o LIDAR odometry ───────────────────────────────────────────────
+    rf2o_node = Node(
+        package='rf2o_laser_odometry',
+        executable='rf2o_laser_odometry_node',
+        name='rf2o_laser_odometry',
+        output='screen',
+        parameters=[rf2o_cfg],
     )
 
     # ── robot_localization EKF ────────────────────────────────────────────
@@ -174,39 +198,54 @@ def generate_launch_description():
         ],
     )
 
-    # ── YDLIDAR X2 ───────────────────────────────────────────────────────────
+    # ── YDLIDAR X2 ──────────────────────────────────────────────────────────
+    # NOTE: "Fail to get baseplate device information!" is a known, non-fatal
+    # SDK warning for YDLIDAR X2. The X2 does not support the extended device
+    # info query; the lidar still starts and scans correctly.
     ydlidar_node = Node(
         package='ydlidar_ros2_driver',
         executable='ydlidar_ros2_driver_node',
         name='ydlidar_node',
         output='screen',
         parameters=[{
-            'port':              LaunchConfiguration('lidar_port'),
-            'baudrate':          115200,         # YDLIDAR X2 baudrate
-            'frame_id':          'lidar_link',   # must match URDF frame name
-            'ignore_array':      '',
-            'frequency':         10.0,
-            'angle_min':         -180.0,
-            'angle_max':          180.0,
-            'range_min':          0.10,
-            'range_max':          12.0,
-            'isSingleChannel':    True,
-            'support_motor_dtr':  True,
-            'intensity':          False,
-            'lidar_type':         1,
-            'device_type':        0,
-            'sample_rate':        3,
-            'auto_reconnect':     True,
+            'port':               LaunchConfiguration('lidar_port'),
+            'baudrate':           115200,        # YDLIDAR X2: 115200 baud
+            'frame_id':           'lidar_link',  # must match URDF frame name
+            'ignore_array':       '',
+            'frequency':          10.0,
+            'angle_min':          -180.0,
+            'angle_max':           180.0,
+            'range_min':           0.12,         # X2 minimum range (m)
+            'range_max':           10.0,         # X2 maximum range (m)
+            'isSingleChannel':     True,         # X2 uses single-channel protocol
+            'support_motor_dtr':   True,         # X2 uses DTR to control motor
+            'resolution_fixed':    False,        # X2 single-ch: let SDK auto-detect
+            'intensity':           False,        # X2 does not output intensity
+            'invalid_range_is_inf': False,       # out-of-range returns 0, not inf
+            'lidar_type':          1,            # triangle lidar type
+            'device_type':         0,            # serial device
+            'sample_rate':         3,            # X2: 3K samples/s
+            'abnormal_check_count': 4,
+            'auto_reconnect':      True,
         }],
     )
 
-    # ── SLAM Toolbox (mapping mode) ───────────────────────────────────────
+    # ── SLAM Toolbox (mapping mode) ─────────────────────────────────────
+    # The YDLIDAR driver publishes /scan with BEST_EFFORT reliability.
+    # slam_toolbox defaults to RELIABLE, causing a QoS incompatibility that
+    # silently drops ALL scan messages. The qos_overrides parameter below
+    # tells slam_toolbox to subscribe to /scan with BEST_EFFORT instead.
     slam_node = LifecycleNode(
         package='slam_toolbox',
         executable='async_slam_toolbox_node',
         name='slam_toolbox',
         output='screen',
-        parameters=[slam_cfg, {'use_sim_time': False}],
+        parameters=[
+            slam_cfg,
+            {'use_sim_time': False},
+            # QoS fix: match YDLIDAR BEST_EFFORT publisher on /scan
+            {'qos_overrides./scan.subscription.reliability': 'best_effort'},
+        ],
         namespace='',
         condition=IfCondition(LaunchConfiguration('use_slam')),
     )
@@ -256,7 +295,7 @@ def generate_launch_description():
 
     lifecycle_manager_localization = Node(
         package='nav2_lifecycle_manager',
-        executable='lifecycle_manager_server',
+        executable='lifecycle_manager',
         name='lifecycle_manager_localization',
         output='screen',
         parameters=[{
@@ -267,17 +306,90 @@ def generate_launch_description():
         condition=UnlessCondition(LaunchConfiguration('use_slam')),
     )
 
-    # ── Nav2 (bringup) ────────────────────────────────────────────────────
-    nav2_bringup_dir = FindPackageShare('nav2_bringup')
-    nav2_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource([
-            PathJoinSubstitution([nav2_bringup_dir, 'launch', 'navigation_launch.py'])
-        ]),
-        launch_arguments={
-            'use_sim_time': 'false',
-            'params_file':  nav2_cfg,
-            'autostart':    'true',
-        }.items(),
+    # ── Nav2 Nodes (Jazzy customization) ──────────────────────────────────
+    remappings = [('/tf', 'tf'), ('/tf_static', 'tf_static')]
+
+    controller_server = Node(
+        package='nav2_controller',
+        executable='controller_server',
+        name='controller_server',
+        output='screen',
+        parameters=[nav2_cfg],
+        remappings=remappings + [('cmd_vel', 'cmd_vel_nav')],
+    )
+
+    smoother_server = Node(
+        package='nav2_smoother',
+        executable='smoother_server',
+        name='smoother_server',
+        output='screen',
+        parameters=[nav2_cfg],
+        remappings=remappings,
+    )
+
+    planner_server = Node(
+        package='nav2_planner',
+        executable='planner_server',
+        name='planner_server',
+        output='screen',
+        parameters=[nav2_cfg],
+        remappings=remappings,
+    )
+
+    behavior_server = Node(
+        package='nav2_behaviors',
+        executable='behavior_server',
+        name='behavior_server',
+        output='screen',
+        parameters=[nav2_cfg],
+        remappings=remappings + [('cmd_vel', 'cmd_vel_nav')],
+    )
+
+    bt_navigator = Node(
+        package='nav2_bt_navigator',
+        executable='bt_navigator',
+        name='bt_navigator',
+        output='screen',
+        parameters=[nav2_cfg],
+        remappings=remappings,
+    )
+
+    waypoint_follower = Node(
+        package='nav2_waypoint_follower',
+        executable='waypoint_follower',
+        name='waypoint_follower',
+        output='screen',
+        parameters=[nav2_cfg],
+        remappings=remappings,
+    )
+
+    velocity_smoother = Node(
+        package='nav2_velocity_smoother',
+        executable='velocity_smoother',
+        name='velocity_smoother',
+        output='screen',
+        parameters=[nav2_cfg],
+        remappings=remappings + [('cmd_vel', 'cmd_vel_nav')],
+    )
+
+    lifecycle_manager_navigation = Node(
+        package='nav2_lifecycle_manager',
+        executable='lifecycle_manager',
+        name='lifecycle_manager_navigation',
+        output='screen',
+        parameters=[{
+            'use_sim_time': False,
+            'autostart': True,
+            'node_names': [
+                'controller_server',
+                'smoother_server',
+                'planner_server',
+                'behavior_server',
+                'bt_navigator',
+                'waypoint_follower',
+                'velocity_smoother'
+            ]
+        }],
     )
 
     # ── RViz ─────────────────────────────────────────────────────────────
@@ -295,9 +407,11 @@ def generate_launch_description():
         args + [
             LogInfo(msg='[AURA] Starting real robot navigation stack'),
             rsp_node,
+            jsp_node,
             hardware_bridge,
             imu_filter,
             wheel_odom,
+            rf2o_node,
             ekf_node,
             ydlidar_node,
 
@@ -312,7 +426,16 @@ def generate_launch_description():
             ]),
 
             # t=5s: Start Nav2
-            TimerAction(period=5.0, actions=[nav2_launch]),
+            TimerAction(period=5.0, actions=[
+                controller_server,
+                smoother_server,
+                planner_server,
+                behavior_server,
+                bt_navigator,
+                waypoint_follower,
+                velocity_smoother,
+                lifecycle_manager_navigation,
+            ]),
 
             # t=6s: Start RViz
             TimerAction(period=6.0, actions=[rviz_node]),

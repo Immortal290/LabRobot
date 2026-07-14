@@ -38,7 +38,7 @@ from launch.actions import (
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, Command
-from launch_ros.actions import Nodexcvk
+from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 

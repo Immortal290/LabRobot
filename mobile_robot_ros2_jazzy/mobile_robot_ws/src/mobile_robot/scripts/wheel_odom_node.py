@@ -129,6 +129,7 @@ class WheelOdomNode(Node):
         self.declare_parameter('wheel_radius',     WHEEL_RADIUS_DEFAULT)
         self.declare_parameter('wheel_separation', WHEEL_SEPARATION_DEFAULT)
         self.declare_parameter('ticks_per_rev',    TICKS_PER_REV_DEFAULT)
+        self.declare_parameter('ticks_scale',      1.0) # Scaling factor for heavy wheels / slippage calibration
         self.declare_parameter('odom_frame',       'odom')
         self.declare_parameter('base_frame',       'base_footprint')
         self.declare_parameter('publish_tf',       False)
@@ -136,12 +137,13 @@ class WheelOdomNode(Node):
         self.wheel_radius     = self.get_parameter('wheel_radius').value
         self.wheel_separation = self.get_parameter('wheel_separation').value
         self.ticks_per_rev    = self.get_parameter('ticks_per_rev').value
+        self.ticks_scale      = self.get_parameter('ticks_scale').value
         self.odom_frame       = self.get_parameter('odom_frame').value
         self.base_frame       = self.get_parameter('base_frame').value
         self.publish_tf       = self.get_parameter('publish_tf').value
 
-        # metres of travel per encoder tick
-        self.meters_per_tick = (2.0 * math.pi * self.wheel_radius) / self.ticks_per_rev
+        # metres of travel per encoder tick, scaled by calibration factor
+        self.meters_per_tick = (2.0 * math.pi * self.wheel_radius) / (self.ticks_per_rev * self.ticks_scale)
 
         # ── Odometry state ────────────────────────────────────────────────────
         self.x          = 0.0
@@ -209,8 +211,23 @@ class WheelOdomNode(Node):
             return
 
         # ── Δticks → distances ────────────────────────────────────────────────
-        d_left  = (left_ticks  - self.prev_left)  * self.meters_per_tick
-        d_right = (right_ticks - self.prev_right) * self.meters_per_tick
+        delta_left  = left_ticks  - self.prev_left
+        delta_right = right_ticks - self.prev_right
+
+        # Detect encoder resets or serial re-connections (ticks jumping)
+        # Max reasonable ticks delta at 50Hz (e.g. max speed 2 m/s -> ~80 ticks)
+        # A threshold of 500 ticks is safe and prevents huge warps.
+        if abs(delta_left) > 500 or abs(delta_right) > 500:
+            self.get_logger().warn(
+                f'Encoder jump detected: delta_left={delta_left}, delta_right={delta_right}. Resetting baseline.'
+            )
+            self.prev_left  = left_ticks
+            self.prev_right = right_ticks
+            self.prev_time  = now
+            return
+
+        d_left  = delta_left  * self.meters_per_tick
+        d_right = delta_right * self.meters_per_tick
 
         self.prev_left  = left_ticks
         self.prev_right = right_ticks

@@ -107,7 +107,7 @@ def generate_launch_description():
             'wheel_separation', default_value='0.660',
             description='Wheel centre-to-centre distance in metres'),
         DeclareLaunchArgument(
-            'ticks_per_rev', default_value='1440.0',
+            'ticks_per_rev', default_value='720.0',
             description='Encoder ticks per wheel revolution'),
         DeclareLaunchArgument(
             'use_rviz', default_value='true',

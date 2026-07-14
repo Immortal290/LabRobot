@@ -1,0 +1,58 @@
+# ═══════════════════════════════════════════════════════════════════════════
+#  slam_toolbox_real.yaml — SLAM Toolbox, no-IMU wheel+LIDAR setup
+#  Sensor: YDLIDAR X2 (filtered) | Odometry: EKF-fused wheel + rf2o laser odom
+#  ROS 2 Jazzy | AURA Mobile Robot
+#
+#  PHASE 1 — MAPPING
+#    ros2 launch mobile_robot_mapping real_slam_mapping.launch.py
+#    → Drive slowly, gentle arcs, loop back through mapped areas often
+#    → ros2 service call /slam_toolbox/save_map \
+#        slam_toolbox/srv/SaveMap "{name: {data: 'lab_map'}}"
+# ═══════════════════════════════════════════════════════════════════════════
+
+slam_toolbox:
+  ros__parameters:
+
+    mode: mapping
+    use_sim_time: false
+    debug_logging: false
+
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_footprint
+
+    scan_topic: /scan            # this is the FILTERED scan (see laser_filter.yaml)
+    throttle_scans: 1
+
+    tf_buffer_duration: 30.0
+    transform_timeout: 0.5
+
+    map_update_interval: 3.0
+    map_file_name: ''
+    map_start_at_dock: false
+    map_start_pose: [0.0, 0.0, 0.0]
+
+    resolution: 0.05
+    max_laser_range: 8.0         # matches laser_filter.yaml upper_threshold
+
+    # Tighter than stock defaults — catches drift sooner since we have no IMU
+    minimum_travel_distance: 0.08
+    minimum_travel_heading: 0.08
+
+    use_scan_matching: true
+    use_scan_bagging: false
+    minimum_score_for_scan_matching: 0.65   # raised from default 0.5 — reject weak matches
+
+    correlation_search_space_dimension: 0.7       # widened — compensates for no-IMU uncertainty
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.15
+
+    do_loop_closing: true
+    loop_search_max_linear_distance: 5.0
+    loop_search_max_angular_distance: 0.524
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+
+    publish_pose_graph: true

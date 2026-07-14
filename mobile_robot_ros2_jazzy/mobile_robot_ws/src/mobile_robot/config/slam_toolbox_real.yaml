@@ -62,10 +62,14 @@ slam_toolbox:
     # Auto-save destination outside the source tree so colcon never deletes it.
     # Toolbox appends .posegraph / .data automatically.
     # Call save_map service when done to write the final .pgm + .yaml for Nav2.
-    map_file_name: /home/lab/Desktop/AURA/maps/lab_map
+    # NOTE: Leave this empty to always start a fresh map.
+    # Set to a path (without extension) only if you have existing .posegraph/.data
+    # files you want to RESUME from. The .pgm/.yaml from nav2_map_saver are NOT
+    # the same format — SLAM toolbox needs its own serialised format.
+    map_file_name: ''
 
     # Robot starts mapping from its current position as the origin (0, 0, 0).
-    map_start_at_dock: true
+    map_start_at_dock: false
     map_start_pose: [0.0, 0.0, 0.0]
 
     # ── Map resolution ────────────────────────────────────────────────────
@@ -87,7 +91,7 @@ slam_toolbox:
     correlation_search_space_resolution:       0.01
     correlation_search_space_smear_deviation:  0.1
     correlation_search_max_linear_search_window:  0.8
-    correlation_search_max_angular_search_window: 0.5
+    correlation_search_max_angular_search_window: 1.57
 
     # ── Loop closure ──────────────────────────────────────────────────────
     # When the robot returns to a previously mapped area, loop closure

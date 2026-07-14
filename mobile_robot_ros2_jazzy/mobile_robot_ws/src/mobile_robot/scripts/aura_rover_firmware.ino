@@ -31,17 +31,17 @@
 // ── Pin assignments ───────────────────────────────────────────────────────────
 #define LEFT_RPWM    5
 #define LEFT_LPWM    6
-#define LEFT_R_EN    8
-#define LEFT_L_EN    9
-#define RIGHT_RPWM  10
-#define RIGHT_LPWM  11
-#define RIGHT_R_EN  12
-#define RIGHT_L_EN  13
+#define LEFT_R_EN    7
+#define LEFT_L_EN    8
+#define RIGHT_RPWM   9
+#define RIGHT_LPWM  10
+#define RIGHT_R_EN  11
+#define RIGHT_L_EN  12
 
 #define LEFT_ENC_A   2    // INT0
 #define LEFT_ENC_B   4
 #define RIGHT_ENC_A  3    // INT1
-#define RIGHT_ENC_B  7
+#define RIGHT_ENC_B  A0
 
 // ── MPU-6500 registers ────────────────────────────────────────────────────────
 #define MPU_ADDR         0x68
