@@ -21,3 +21,7 @@ __pycache__/
 *.hex
 *.elf
 *.map
+
+# ── Secrets and Env ───────────────────────────────────────────────────────
+secrets/
+.env
