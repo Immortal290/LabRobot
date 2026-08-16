@@ -1,0 +1,10 @@
+
+╔══════════════════════════════════════════════╗
+║   AURA — Lab Delivery Robot Startup System  ║
+║   2026-06-26 14:08:41                     ║
+╚══════════════════════════════════════════════╝
+
+
+[1m[0;36m═══ Step 1: Environment Validation ═══[0m
+[0;32m  ✓[0m  Linux detected
+[0;31m  ✗[0m  ROS2 not found. Install ROS 2 Jazzy first.
