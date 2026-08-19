@@ -20,6 +20,18 @@ class Settings(BaseSettings):
     GMAIL_SENDER_ADDRESS: str = ""
     GMAIL_SENDER_NAME: str = "Lab Buddy"
 
+    # ── NEW: MQTT Configuration ──────────────────────────────────────────────────
+    MQTT_BROKER: str = "localhost" # default for local testing
+    MQTT_PORT: int = 1883
+    MQTT_USERNAME: str = ""
+    MQTT_PASSWORD: str = ""
+    MQTT_TLS_ENABLED: bool = False
+    
+    # ── NEW: Robot Settings ──────────────────────────────────────────────────────
+    ROBOT_ID: str = "ROBOT_01"
+    OTP_EXPIRY_SECONDS: int = 300
+    OTP_MAX_ATTEMPTS: int = 5
+
     class Config:
         env_file = ".env"
 

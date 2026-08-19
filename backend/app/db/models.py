@@ -53,11 +53,15 @@ class Delivery(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     rack_id = Column(Integer, ForeignKey("racks.id"), nullable=True)
     item_id = Column(Integer, ForeignKey("inventory.id"))
-    destination = Column(String)
+    destination = Column(String, nullable=True)
     pc_no = Column(String, nullable=True)
     location = Column(String, nullable=True)
+    location_id = Column(String, nullable=True) # New strict location reference
+    robot_id = Column(String, nullable=True)
     status = Column(String)
-    otp = Column(String, nullable=True)
+    otp_hash = Column(String, nullable=True)
+    otp_expires_at = Column(DateTime, nullable=True)
+    otp_attempts = Column(Integer, default=0)
     email = Column(String, nullable=True)          # OTP delivery email
     eta_seconds = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -152,3 +156,42 @@ class RobotStatusSnapshot(Base):
     lidar_ok        = Column(Boolean, default=False)
     active_delivery = Column(Integer, nullable=True)
     timestamp       = Column(DateTime, default=datetime.utcnow, index=True)
+
+# ─── NEW: Strict Location System ─────────────────────────────────────────────
+class Location(Base):
+    """Maps strict location IDs to map coordinates for the robot."""
+    __tablename__ = "locations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    location_id = Column(String, unique=True, index=True, nullable=False) # e.g. "desk1"
+    name = Column(String, nullable=False) # e.g. "Desk 1"
+    x = Column(Float, default=0.0)
+    y = Column(Float, default=0.0)
+    yaw = Column(Float, default=0.0)
+    map = Column(String, default="lab_map")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# ─── NEW: Robot Model ────────────────────────────────────────────────────────
+class Robot(Base):
+    __tablename__ = "robots"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    robot_id = Column(String, unique=True, index=True, nullable=False)
+    status = Column(String, default="OFFLINE") # ONLINE, OFFLINE, ERROR, EMERGENCY_STOP
+    battery = Column(Float, default=100.0)
+    current_order_id = Column(Integer, ForeignKey("deliveries.id"), nullable=True)
+    last_heartbeat = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+# ─── NEW: Robot Command History ──────────────────────────────────────────────
+class RobotCommand(Base):
+    __tablename__ = "robot_commands"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    command_id = Column(String, unique=True, index=True, nullable=False)
+    robot_id = Column(String, index=True, nullable=False)
+    order_id = Column(String, nullable=True)
+    command = Column(String, nullable=False) # DELIVER, CANCEL_DELIVERY, UNLOCK_COMPARTMENT, etc.
+    payload = Column(String, nullable=True) # JSON payload sent
+    acknowledged = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

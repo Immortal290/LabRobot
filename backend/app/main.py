@@ -7,6 +7,7 @@ import logging
 from app.core.config import settings
 from app.db.database import engine, Base
 from app.api import endpoints
+from app.mqtt.client import mqtt_client
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -146,6 +147,16 @@ with SessionLocal() as db:
     if db.query(models.SystemConfig).count() == 0:
         db.add(models.SystemConfig())
         db.commit()
+        
+    # Seed Locations if none exist
+    if db.query(models.Location).count() == 0:
+        db.add_all([
+            models.Location(location_id="desk1", name="Desk 1", x=-1.530, y=0.808, yaw=0.0, map="lab_map"),
+            models.Location(location_id="desk2", name="Desk 2", x=-0.11, y=1.88, yaw=0.0, map="lab_map"),
+            models.Location(location_id="desk3", name="Desk 3", x=-1.404, y=-0.121, yaw=0.0, map="lab_map"),
+            models.Location(location_id="home", name="Home Base", x=-1.314, y=-0.205, yaw=0.0, map="lab_map"),
+        ])
+        db.commit()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -162,6 +173,66 @@ app.add_middleware(
 
 app.include_router(endpoints.router, prefix=settings.API_V1_STR)
 
+@app.on_event("startup")
+async def startup_event():
+    await mqtt_client.connect()
+    mqtt_client.register_callback("status", handle_mqtt_status)
+    mqtt_client.register_callback("heartbeat", handle_mqtt_heartbeat)
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await mqtt_client.disconnect()
+
+async def handle_mqtt_status(robot_id: str, data: dict):
+    from app.db.database import SessionLocal
+    from app.db import models
+    from app.api.endpoints import broadcast_delivery_update, send_otp_email
+    from datetime import datetime
+    import random
+    from passlib.hash import bcrypt
+    
+    status = data.get("status")
+    order_id = data.get("order_id")
+    
+    if not order_id: return
+    try: db_id = int(order_id.replace("ORD_", ""))
+    except: db_id = order_id
+        
+    with SessionLocal() as db:
+        delivery = db.query(models.Delivery).filter(models.Delivery.id == db_id).first()
+        if delivery:
+            delivery.status = status
+            if status == "DELIVERY_COMPLETED":
+                delivery.completed_at = datetime.utcnow()
+            elif status == "ARRIVED":
+                # Generate 6-digit OTP
+                raw_otp = f"{random.randint(100000, 999999)}"
+                delivery.otp_hash = bcrypt.hash(raw_otp)
+                delivery.otp_attempts = 0
+                delivery.status = "WAITING_FOR_OTP"
+                db.commit()
+                # Send email using raw_otp
+                send_otp_email(delivery, db, raw_otp)
+            
+            db.commit()
+            db.refresh(delivery)
+            broadcast_delivery_update(delivery, db)
+
+async def handle_mqtt_heartbeat(robot_id: str, data: dict):
+    from app.db.database import SessionLocal
+    from app.db import models
+    from datetime import datetime
+    
+    with SessionLocal() as db:
+        robot = db.query(models.Robot).filter(models.Robot.robot_id == robot_id).first()
+        if not robot:
+            robot = models.Robot(robot_id=robot_id, status=data.get("status", "ONLINE"), battery=data.get("battery", 100.0))
+            db.add(robot)
+        else:
+            robot.status = data.get("status", "ONLINE")
+            robot.battery = data.get("battery", 100.0)
+            robot.last_heartbeat = datetime.utcnow()
+        db.commit()
 
 class ConnectionManager:
     def __init__(self):

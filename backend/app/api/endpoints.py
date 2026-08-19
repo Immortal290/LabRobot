@@ -285,8 +285,9 @@ def broadcast_delivery_update(db_delivery, db):
             "destination": db_delivery.destination,
             "pc_no": db_delivery.pc_no,
             "location": db_delivery.location,
+            "location_id": db_delivery.location_id,
             "status": db_delivery.status,
-            "otp": db_delivery.otp,
+            "otp": None,
             "email": db_delivery.email,
             "created_at": db_delivery.created_at.isoformat() if db_delivery.created_at else None,
             "completed_at": db_delivery.completed_at.isoformat() if db_delivery.completed_at else None
@@ -524,7 +525,7 @@ def _build_otp_html(otp: str, item_name: str, rack_id, recipient_name: str) -> s
 </html>"""
 
 
-def send_otp_email(delivery, db: Session):
+def send_otp_email(delivery, db: Session, raw_otp: str):
     """Send OTP to the user's email via Gmail API (Web App OAuth2 — env var credentials).
     Falls back to a console simulation if credentials are not configured."""
     if not delivery.email:
@@ -539,8 +540,8 @@ def send_otp_email(delivery, db: Session):
         else (user.username.capitalize() if user else "Student")
     )
 
-    subject   = f"🔑 Lab Buddy OTP: {delivery.otp} — Your equipment has arrived!"
-    html_body = _build_otp_html(delivery.otp, item_name, delivery.rack_id, recipient_name)
+    subject   = f"🔑 Lab Buddy OTP: {raw_otp} — Your equipment has arrived!"
+    html_body = _build_otp_html(raw_otp, item_name, delivery.rack_id, recipient_name)
 
     # ── Attempt real Gmail API send using Web App OAuth2 credentials ──────────
     email_sent = False
@@ -578,15 +579,15 @@ def send_otp_email(delivery, db: Session):
             service.users().messages().send(userId="me", body={"raw": raw}).execute()
 
             email_sent = True
-            print(f"\n✅ [GMAIL OTP EMAIL] Sent to {delivery.email} (OTP: {delivery.otp})")
+            print(f"\n✅ [GMAIL OTP EMAIL] Sent to {delivery.email} (OTP: {raw_otp})")
             create_log(db, "system",
-                       f"📧 OTP email sent to {delivery.email} — delivery #{delivery.id} (OTP: {delivery.otp})")
+                       f"📧 OTP email sent to {delivery.email} — delivery #{delivery.id} (OTP: {raw_otp})")
 
             db.add(models.OTPLog(
                 delivery_id=delivery.id,
                 user_id=delivery.user_id,
                 email=delivery.email,
-                otp_code=delivery.otp,
+                otp_code=raw_otp,
                 action="send",
             ))
             db.commit()
@@ -600,10 +601,10 @@ def send_otp_email(delivery, db: Session):
         print(f"\n{'='*70}")
         print(f"📧 [SIMULATED EMAIL] To: {delivery.email}")
         print(f"📬 Subject: {subject}")
-        print(f"🔑 OTP CODE: {delivery.otp}   |   Item: {item_name}   |   Locker: R-{delivery.rack_id}")
+        print(f"🔑 OTP CODE: {raw_otp}   |   Item: {item_name}   |   Locker: R-{delivery.rack_id}")
         print(f"{'='*70}\n")
         create_log(db, "system",
-                   f"📧 [Simulated] OTP email to {delivery.email} (OTP: {delivery.otp}) — set GMAIL_* env vars to go live.")
+                   f"📧 [Simulated] OTP email to {delivery.email} (OTP: {raw_otp}) — set GMAIL_* env vars to go live.")
 
     # ── Real-time WebSocket push to mobile portal (always fires) ─────────────
     from app.main import manager
@@ -612,8 +613,8 @@ def send_otp_email(delivery, db: Session):
         "type":        "email_notification",
         "email":       delivery.email,
         "delivery_id": delivery.id,
-        "otp":         delivery.otp,
-        "message":     f"🤖 Lab Buddy: Your retrieval OTP is {delivery.otp}. Enter it on the robot screen to open Locker 0{delivery.rack_id}."
+        "otp":         raw_otp,
+        "message":     f"🤖 Lab Buddy: Your retrieval OTP is {raw_otp}. Enter it on the robot screen to open Locker 0{delivery.rack_id}."
     }
     broadcast_task = manager.broadcast_to_ui(json.dumps(ws_payload))
     try:
@@ -632,9 +633,36 @@ def update_delivery_status(delivery_id: int, update: schemas.DeliveryUpdate, db:
     delivery.status = update.status
     
     if update.status == "task_assigned" and old_status == "pending_approval":
-        import random
-        delivery.otp = f"{random.randint(1000, 9999)}"
-        create_log(db, "delivery", f"Delivery {delivery_id} approved. OTP generated.", user_id=current_user.id)
+        delivery.status = "ROBOT_DISPATCHED"
+        create_log(db, "delivery", f"Delivery {delivery_id} approved. Robot dispatched.", user_id=current_user.id)
+        
+        # Look up location coordinates
+        loc = db.query(models.Location).filter(models.Location.location_id == delivery.location_id).first()
+        
+        from app.mqtt.client import mqtt_client
+        import asyncio, uuid
+        from app.core.config import settings
+        
+        cmd = {
+            "protocol_version": "1.0",
+            "command": "DELIVER",
+            "command_id": str(uuid.uuid4()),
+            "order_id": f"ORD_{delivery.id}",
+            "robot_id": settings.ROBOT_ID,
+            "destination": {
+                "location_id": delivery.location_id,
+                "x": loc.x if loc else 0.0,
+                "y": loc.y if loc else 0.0,
+                "yaw": loc.yaw if loc else 0.0
+            },
+            "items": []
+        }
+        
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(mqtt_client.publish_command(settings.ROBOT_ID, cmd))
+        except RuntimeError:
+            pass
 
     if update.status == "completed":
         delivery.completed_at = datetime.utcnow()
@@ -643,10 +671,6 @@ def update_delivery_status(delivery_id: int, update: schemas.DeliveryUpdate, db:
     db.commit()
     db.refresh(delivery)
     
-    # Trigger SMS notification if it has arrived
-    if update.status == "arrived" and old_status != "arrived":
-        send_otp_email(delivery, db)
-        
     broadcast_delivery_update(delivery, db)
     return delivery
 
@@ -718,35 +742,33 @@ async def verify_delivery_otp(delivery_id: int, payload: schemas.DeliveryOTPVeri
     if not delivery:
         raise HTTPException(status_code=404, detail="Delivery not found")
     
-    if delivery.otp != payload.otp:
+    from passlib.hash import bcrypt
+    if not delivery.otp_hash or not bcrypt.verify(payload.otp, delivery.otp_hash):
+        delivery.otp_attempts = (delivery.otp_attempts or 0) + 1
+        db.commit()
         raise HTTPException(status_code=400, detail="Invalid OTP code")
-    
-    # Update delivery status to panel_open
-    delivery.status = "panel_open"
-    
-    # Unlock the rack associated with the delivery
-    if delivery.rack_id:
-        rack = db.query(models.Rack).filter(models.Rack.id == delivery.rack_id).first()
-        if rack:
-            rack.lock_status = "unlocked"
-            
-        # Send WebSocket command to hardware to physically open the servo
-        from app.main import manager
-        import json
-        await manager.send_to_bridge(json.dumps({
-            "type": "command", 
-            "action": "unlock_rack", 
-            "rack_id": delivery.rack_id
-        }))
-            
-    create_log(db, "delivery", f"Delivery {delivery_id} OTP verified. Panel open.", user_id=delivery.user_id)
+        
+    delivery.status = "OTP_VERIFIED"
     db.commit()
-    db.refresh(delivery)
     
-    # Broadcast status change to WebSocket clients
+    from app.mqtt.client import mqtt_client
+    from app.core.config import settings
+    import uuid
+    cmd = {
+        "protocol_version": "1.0",
+        "command": "UNLOCK_COMPARTMENT",
+        "command_id": str(uuid.uuid4()),
+        "order_id": f"ORD_{delivery.id}",
+        "robot_id": settings.ROBOT_ID,
+        "compartment": f"COMPARTMENT_{delivery.rack_id}"
+    }
+    await mqtt_client.publish_command(settings.ROBOT_ID, cmd)
+    
+    create_log(db, "delivery", f"Delivery {delivery_id} OTP verified. Unlock command sent.", user_id=delivery.user_id)
+    db.refresh(delivery)
     broadcast_delivery_update(delivery, db)
     
-    return {"ok": True, "message": "OTP verified successfully. Locker unlocked."}
+    return {"ok": True, "message": "OTP verified successfully. Unlocking compartment."}
 
 
 @router.post("/robot/command")
