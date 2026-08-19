@@ -52,6 +52,24 @@ def get_tunnel_url():
         
     return {"url": None}
 
+@router.get("/network/tunnel/qr")
+def get_tunnel_qr():
+    import qrcode
+    import io
+    from fastapi.responses import StreamingResponse
+    
+    tunnel_data = get_tunnel_url()
+    url = tunnel_data.get("url")
+    if not url:
+        raise HTTPException(status_code=404, detail="Cloudflare tunnel URL not found")
+        
+    img = qrcode.make(url)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    
+    return StreamingResponse(buf, media_type="image/png")
+
 # ─── AUTH ────────────────────────────────────────────────────────────────────
 
 @router.post("/auth/token", response_model=schemas.Token)
